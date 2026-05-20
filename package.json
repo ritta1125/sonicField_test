@@ -1,0 +1,13 @@
+{
+  "name": "sonicfield",
+  "version": "0.1.0",
+  "description": "Spatial audio sports experience for acquired-blind fans",
+  "scripts": {
+    "dev": "node server/index.js",
+    "prototype": "open prototype/gate2.html"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}

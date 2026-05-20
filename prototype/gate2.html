@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SonicField — Gate 2 Prototype</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --surface2: #1e1e2a;
+      --border: #2a2a3a;
+      --accent: #4fffb0;
+      --accent2: #7c6fff;
+      --warn: #ff6b6b;
+      --text: #e8e8f0;
+      --muted: #6b6b80;
+      --goal: #ffd700;
+      --foul: #ff6b6b;
+      --tackle: #ff8c42;
+      --corner: #4fc3f7;
+      --penalty: #ce93d8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Pro Display', -apple-system, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+    .badge {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 20px;
+      background: var(--accent2);
+      color: #fff;
+      font-weight: 600;
+    }
+    .match-info { font-size: 13px; color: var(--muted); text-align: right; }
+    .match-info strong { color: var(--text); }
+
+    /* ── Browser warning ── */
+    #browser-warn {
+      display: none;
+      background: #2a1a00;
+      border: 1px solid #ff8c42;
+      color: #ff8c42;
+      padding: 10px 24px;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    /* ── Main layout ── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* ── Pitch section ── */
+    .pitch-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px;
+      gap: 20px;
+    }
+
+    .pitch-label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* ── 5x3 Pitch Grid ── */
+    .pitch-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 560px;
+    }
+    .pitch-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 4px;
+      aspect-ratio: 5/3;
+      background: #1a2e1a;
+      border: 2px solid #2d4a2d;
+      border-radius: 8px;
+      padding: 8px;
+      position: relative;
+    }
+    .pitch-cell {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 4px;
+      position: relative;
+      transition: background 0.15s;
+    }
+    .pitch-cell.active {
+      background: rgba(79, 255, 176, 0.15);
+      border-color: var(--accent);
+    }
+    .pitch-cell.flash {
+      animation: cell-flash 0.4s ease-out;
+    }
+    @keyframes cell-flash {
+      0%   { background: rgba(79,255,176,0.5); }
+      100% { background: rgba(255,255,255,0.03); }
+    }
+
+    /* Ball dot */
+    #ball-dot {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: left 0.3s ease, top 0.3s ease;
+      box-shadow: 0 0 8px rgba(255,255,255,0.8);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Pitch markings */
+    .pitch-center-line {
+      position: absolute;
+      left: 50%;
+      top: 8px;
+      bottom: 8px;
+      width: 1px;
+      background: rgba(255,255,255,0.12);
+      pointer-events: none;
+    }
+    .pitch-center-circle {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px;
+      height: 60px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    /* Zone labels */
+    .zone-labels {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 560px;
+      font-size: 10px;
+      color: var(--muted);
+      padding: 0 8px;
+    }
+
+    /* ── Timeline ── */
+    .timeline-section {
+      width: 100%;
+      max-width: 560px;
+    }
+    .timeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .time-display {
+      font-size: 22px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+    }
+    .timeline-controls { display: flex; gap: 8px; align-items: center; }
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+    }
+    .btn-primary:hover { background: #3de89b; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-ghost {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--border); }
+
+    .scrubber-container {
+      position: relative;
+      margin-bottom: 4px;
+    }
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--surface2);
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    /* Event markers on scrubber */
+    .scrubber-markers {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 6px;
+      pointer-events: none;
+    }
+    .event-marker {
+      position: absolute;
+      top: 0;
+      width: 3px;
+      height: 6px;
+      border-radius: 2px;
+      transform: translateX(-50%);
+    }
+
+    .speed-btn {
+      font-size: 11px;
+      padding: 4px 8px;
+      background: var(--surface2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .speed-btn.active {
+      background: var(--accent2);
+      color: #fff;
+      border-color: var(--accent2);
+    }
+
+    /* ── Right panel ── */
+    .right-panel {
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .panel-section {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    /* ── Earcon legend ── */
+    .earcon-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .earcon-item:last-child { border-bottom: none; }
+    .earcon-left { display: flex; align-items: center; gap: 10px; }
+    .earcon-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .earcon-name { font-size: 13px; font-weight: 600; }
+    .earcon-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .earcon-controls { display: flex; gap: 6px; align-items: center; }
+    .mute-btn {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--surface2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .mute-btn.muted {
+      background: #2a1a1a;
+      color: var(--warn);
+      border-color: var(--warn);
+    }
+    .test-btn {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .test-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Event log ── */
+    .event-log {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .event-entry {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 8px;
+      border-radius: 6px;
+      background: var(--surface2);
+      font-size: 12px;
+      animation: entry-slide-in 0.2s ease;
+    }
+    @keyframes entry-slide-in {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .event-time { color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .event-type { font-weight: 700; flex-shrink: 0; }
+    .event-pos { color: var(--muted); font-size: 11px; }
+
+    /* ── Gate 2 eval panel ── */
+    .eval-section { padding: 20px; }
+    .eval-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+    .eval-question {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      padding: 8px;
+      background: var(--surface2);
+      border-radius: 6px;
+      border-left: 3px solid var(--accent2);
+    }
+    .eval-answers {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .ans-btn {
+      padding: 8px 4px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      text-align: center;
+    }
+    .ans-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .ans-btn.correct { background: rgba(79,255,176,0.15); border-color: var(--accent); color: var(--accent); }
+    .ans-btn.wrong { background: rgba(255,107,107,0.15); border-color: var(--warn); color: var(--warn); }
+
+    .score-display {
+      font-size: 28px;
+      font-weight: 800;
+      text-align: center;
+      margin: 12px 0;
+      color: var(--accent);
+    }
+    .score-bar {
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .score-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: var(--accent);
+      transition: width 0.4s ease;
+    }
+    .gate-status {
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      padding: 8px;
+      border-radius: 6px;
+      margin-top: 8px;
+    }
+    .gate-pass { background: rgba(79,255,176,0.15); color: var(--accent); }
+    .gate-fail { background: rgba(255,107,107,0.15); color: var(--warn); }
+    .gate-pending { background: var(--surface2); color: var(--muted); }
+
+    /* ── Loading state ── */
+    #loading {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 100;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { color: var(--muted); font-size: 14px; }
+
+    /* ── Audio unlock overlay ── */
+    #audio-unlock {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(10,10,15,0.9);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+    }
+    #audio-unlock.visible { display: flex; }
+    #audio-unlock h2 { font-size: 24px; }
+    #audio-unlock p { color: var(--muted); font-size: 14px; text-align: center; max-width: 300px; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    @media (max-width: 768px) {
+      main { grid-template-columns: 1fr; }
+      .right-panel { border-left: none; border-top: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading">
+  <div class="spinner"></div>
+  <p id="loading-msg">StatsBomb 데이터 로딩 중...</p>
+</div>
+
+<!-- Audio unlock (browsers require gesture) -->
+<div id="audio-unlock">
+  <h2>🎧 헤드폰을 착용해주세요</h2>
+  <p>HRTF 공간 음향 체험을 위해 헤드폰이 필요합니다.<br>AirPods Pro, Sony WH-1000XM 등 권장.</p>
+  <button class="btn-primary" id="unlock-btn" onclick="unlockAudio()">청취 시작</button>
+  <p style="font-size:11px; color:var(--muted)">Chrome 또는 Safari에서 최적의 HRTF 품질을 경험할 수 있습니다</p>
+</div>
+
+<header>
+  <div>
+    <div class="logo">SonicField</div>
+    <div style="font-size:11px; color:var(--muted); margin-top:2px">후천성 시각장애인을 위한 공간 음향 스포츠</div>
+  </div>
+  <span class="badge">Gate 2 Prototype</span>
+  <div class="match-info">
+    <strong id="match-title">Loading...</strong><br>
+    <span id="match-meta"></span>
+  </div>
+</header>
+
+<div id="browser-warn">
+  ⚠️ Firefox에서는 HRTF 품질이 저하될 수 있습니다. Chrome 또는 Safari를 권장합니다.
+</div>
+
+<main>
+  <!-- Left: Pitch + Timeline -->
+  <div class="pitch-section">
+    <div class="pitch-label">경기장 (5×3 구역 격자)</div>
+
+    <div class="pitch-wrapper">
+      <div class="pitch-grid" id="pitch-grid" role="img" aria-label="경기장 공간 격자. 5열(좌우)×3행(앞뒤)">
+        <div class="pitch-center-line" aria-hidden="true"></div>
+        <div class="pitch-center-circle" aria-hidden="true"></div>
+        <div id="ball-dot" aria-hidden="true"></div>
+      </div>
+    </div>
+
+    <div class="zone-labels">
+      <span>← 왼쪽</span>
+      <span>중앙</span>
+      <span>오른쪽 →</span>
+    </div>
+
+    <div class="timeline-section">
+      <div class="timeline-header">
+        <div class="time-display" id="time-display" aria-live="polite" aria-label="현재 시간">00:00</div>
+        <div class="timeline-controls">
+          <button class="speed-btn active" onclick="setSpeed(1)" id="speed-1x">1×</button>
+          <button class="speed-btn" onclick="setSpeed(2)" id="speed-2x">2×</button>
+          <button class="speed-btn" onclick="setSpeed(5)" id="speed-5x">5×</button>
+          <button class="btn-ghost" onclick="resetTimeline()" aria-label="처음으로">↩</button>
+          <button class="btn-primary" id="play-btn" onclick="togglePlay()" aria-label="재생/일시정지" disabled>
+            ▶ 재생
+          </button>
+        </div>
+      </div>
+      <div class="scrubber-container">
+        <input type="range" id="scrubber" min="0" max="600" value="0"
+               aria-label="타임라인 스크러버 (0~10분)"
+               oninput="onScrub(this.value)">
+        <div class="scrubber-markers" id="scrubber-markers"></div>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted)">
+        <span>0:00</span><span>10:00</span>
+      </div>
+    </div>
+
+    <!-- Stress test panel -->
+    <div style="width:100%; max-width:560px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px;">
+      <div style="font-size:13px; font-weight:700; margin-bottom:8px; color:var(--accent2)">
+        ⚡ 스트레스 조건 테스트 (Gate 2)
+      </div>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">
+        연속 3개 이벤트를 실제 경기 속도로 재생합니다. 마지막 이벤트의 위치를 맞춰보세요.
+      </div>
+      <button class="btn-ghost" onclick="runStressTest()" id="stress-btn" style="width:100%">
+        🎯 스트레스 테스트 시작
+      </button>
+    </div>
+  </div>
+
+  <!-- Right: Panel -->
+  <div class="right-panel">
+    <!-- Earcon legend -->
+    <div class="panel-section">
+      <div class="panel-title">이어콘 (Earcons)</div>
+      <div id="earcon-list">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Event log -->
+    <div class="panel-section" style="flex:1;">
+      <div class="panel-title">이벤트 로그</div>
+      <div class="event-log" id="event-log" aria-live="polite" aria-label="이벤트 로그">
+        <div style="font-size:12px; color:var(--muted)">재생을 시작하면 이벤트가 여기에 표시됩니다.</div>
+      </div>
+    </div>
+
+    <!-- Gate 2 evaluation -->
+    <div class="eval-section">
+      <div class="eval-title">📊 Gate 2 평가 (슛 위치 맞추기)</div>
+      <div id="eval-content">
+        <div style="font-size:12px; color:var(--muted)">
+          재생 중 슛(Shot) 이벤트가 발생하면 위치 질문이 나타납니다.
+        </div>
+        <div class="score-display" id="score-display">0/0</div>
+        <div class="score-bar"><div class="score-fill" id="score-fill" style="width:0%"></div></div>
+        <div class="gate-status gate-pending" id="gate-status">평가 대기 중</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ═══════════════════════════════════════════════
+// AUDIO ENGINE
+// ═══════════════════════════════════════════════
+const AudioEngine = (() => {
+  let ctx = null;
+  const mutedTypes = new Set();
+
+  async function init() {
+    if (ctx) return;
+    ctx = new AudioContext();
+    await ctx.resume();
+    // Position listener at center of pitch
+    if (ctx.listener.positionX) {
+      ctx.listener.positionX.value = 0;
+      ctx.listener.positionY.value = 0;
+      ctx.listener.positionZ.value = 0;
+      ctx.listener.forwardX.value = 0;
+      ctx.listener.forwardY.value = 0;
+      ctx.listener.forwardZ.value = -1;
+      ctx.listener.upX.value = 0;
+      ctx.listener.upY.value = 1;
+      ctx.listener.upZ.value = 0;
+    }
+  }
+
+  // pitchX: 0-120 (StatsBomb), pitchY: 0-80 (StatsBomb)
+  // Convert to 3D space: listener is at center facing the pitch
+  function pitchToCoords(pitchX, pitchY) {
+    const nx = (pitchX / 120) * 2 - 1;   // -1 (left) to +1 (right)
+    const nz = (pitchY / 80) * 2 - 1;    // -1 (near) to +1 (far)
+    return { x: nx * 12, y: 0, z: nz * 8 - 15 }; // offset so always in front
+  }
+
+  function createPanner(x, y, z) {
+    const panner = ctx.createPanner();
+    panner.panningModel = 'HRTF';
+    panner.distanceModel = 'inverse';
+    panner.refDistance = 1;
+    panner.rolloffFactor = 0.5;
+    panner.coneInnerAngle = 360;
+    if (panner.positionX) {
+      panner.positionX.value = x;
+      panner.positionY.value = y;
+      panner.positionZ.value = z;
+    } else {
+      panner.setPosition(x, y, z);
+    }
+    panner.connect(ctx.destination);
+    return panner;
+  }
+
+  async function play(type, pitchX, pitchY) {
+    if (mutedTypes.has(type)) return;
+    await init();
+    const { x, y, z } = pitchToCoords(pitchX ?? 60, pitchY ?? 40);
+    const panner = createPanner(x, y, z);
+    EARCONS[type]?.(ctx, panner);
+    setTimeout(() => { try { panner.disconnect(); } catch(e){} }, 3000);
+  }
+
+  function toggleMute(type) {
+    if (mutedTypes.has(type)) { mutedTypes.delete(type); return false; }
+    mutedTypes.add(type);
+    return true;
+  }
+  function isMuted(type) { return mutedTypes.has(type); }
+
+  return { init, play, toggleMute, isMuted };
+})();
+
+// ═══════════════════════════════════════════════
+// EARCON SYNTHESIS
+// ═══════════════════════════════════════════════
+const EARCONS = {
+  // Goal: ascending celebratory chime (C E G C octave)
+  goal(ctx, dest) {
+    const t = ctx.currentTime;
+    const freqs = [523.25, 659.25, 783.99, 1046.50];
+    freqs.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, t + i * 0.09);
+      gain.gain.linearRampToValueAtTime(0.35, t + i * 0.09 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.09 + 0.7);
+      osc.connect(gain); gain.connect(dest);
+      osc.start(t + i * 0.09);
+      osc.stop(t + i * 0.09 + 0.75);
+    });
+  },
+
+  // Foul: short sharp whistle burst
+  foul(ctx, dest) {
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(2400, t);
+    osc.frequency.exponentialRampToValueAtTime(1800, t + 0.18);
+    gain.gain.setValueAtTime(0.5, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    osc.connect(gain); gain.connect(dest);
+    osc.start(t); osc.stop(t + 0.3);
+  },
+
+  // Tackle: low percussive thud (noise burst + lowpass)
+  tackle(ctx, dest) {
+    const t = ctx.currentTime;
+    const len = Math.floor(ctx.sampleRate * 0.35);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.08));
+    }
+    const src = ctx.createBufferSource();
+    const lpf = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+    src.buffer = buf;
+    lpf.type = 'lowpass'; lpf.frequency.value = 180;
+    gain.gain.setValueAtTime(2.0, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    src.connect(lpf); lpf.connect(gain); gain.connect(dest);
+    src.start(t);
+  },
+
+  // Corner: bright bell ping
+  corner(ctx, dest) {
+    const t = ctx.currentTime;
+    [[1200, 0], [2400, 0.01], [3600, 0.02]].forEach(([freq, delay]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t + delay);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.8, t + delay + 0.6);
+      gain.gain.setValueAtTime(0, t + delay);
+      gain.gain.linearRampToValueAtTime(0.25, t + delay + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.7);
+      osc.connect(gain); gain.connect(dest);
+      osc.start(t + delay); osc.stop(t + delay + 0.75);
+    });
+  },
+
+  // Penalty: building tension drone (low oscillators)
+  penalty(ctx, dest) {
+    const t = ctx.currentTime;
+    [80, 120, 160].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.18, t + 0.4);
+      gain.gain.setValueAtTime(0.18, t + 0.65);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+      osc.connect(gain); gain.connect(dest);
+      osc.start(t); osc.stop(t + 0.95);
+    });
+  },
+
+  // Substitution: center notification (no spatial)
+  substitution(ctx, dest) {
+    const t = ctx.currentTime;
+    [880, 1100].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, t + i * 0.12);
+      gain.gain.linearRampToValueAtTime(0.3, t + i * 0.12 + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.12 + 0.3);
+      osc.connect(gain); gain.connect(dest);
+      osc.start(t + i * 0.12); osc.stop(t + i * 0.12 + 0.35);
+    });
+  },
+};
+
+// ═══════════════════════════════════════════════
+// EARCON CONFIG
+// ═══════════════════════════════════════════════
+const EARCON_CONFIG = {
+  goal:         { color: '#ffd700', label: '골',       desc: '상승 화음 (4음)',  icon: '⚽' },
+  foul:         { color: '#ff6b6b', label: '파울',     desc: '날카로운 호루라기', icon: '🟨' },
+  tackle:       { color: '#ff8c42', label: '태클',     desc: '저음 충격',        icon: '💥' },
+  corner:       { color: '#4fc3f7', label: '코너킥',   desc: '밝은 종소리',      icon: '🚩' },
+  penalty:      { color: '#ce93d8', label: '페널티',   desc: '긴장 드론',        icon: '🎯' },
+  substitution: { color: '#a5d6a7', label: '교체',     desc: '중앙 알림음',      icon: '🔄' },
+};
+
+// StatsBomb event type → internal type mapping
+const SB_TYPE_MAP = {
+  'Shot':         'shot',
+  'Foul Committed': 'foul',
+  'Duel':         'tackle',
+  'Pass':         null,    // too frequent, skip
+  'Carry':        null,
+  '50/50':        'tackle',
+  'Pressure':     null,
+  'Ball Recovery': null,
+};
+
+// Internal event type → earcon type
+const EVENT_TO_EARCON = {
+  goal:         'goal',
+  shot:         null,    // shot without goal — no earcon, but used for eval
+  foul:         'foul',
+  tackle:       'tackle',
+  corner:       'corner',
+  penalty:      'penalty',
+  substitution: 'substitution',
+};
+
+// ═══════════════════════════════════════════════
+// STATSBOMB DATA
+// ═══════════════════════════════════════════════
+const SB_BASE = 'https://raw.githubusercontent.com/statsbomb/open-data/master/data';
+
+// Well-known match IDs in StatsBomb open data
+// EURO 2020: competition=55, season=43
+// La Liga 2020-21: competition=11, season=90
+const DEFAULT_MATCH_ID = 3794685; // EURO 2020 — England vs Germany
+
+let allEvents = [];
+let filteredEvents = []; // events in the 10-min window
+let segmentStart = 0;    // seconds into match
+
+async function loadStatsBomb() {
+  setLoadingMsg('StatsBomb 이벤트 데이터 로딩 중...');
+  try {
+    const url = `${SB_BASE}/events/${DEFAULT_MATCH_ID}.json`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    allEvents = await res.json();
+    setLoadingMsg(`${allEvents.length}개 이벤트 로드됨. 처리 중...`);
+    processEvents();
+    document.getElementById('match-title').textContent = 'England vs Germany';
+    document.getElementById('match-meta').textContent = 'EURO 2020 | StatsBomb Open Data';
+  } catch(e) {
+    console.warn('StatsBomb fetch failed, using sample data:', e);
+    setLoadingMsg('샘플 데이터 사용 중...');
+    allEvents = generateSampleEvents();
+    processEvents();
+    document.getElementById('match-title').textContent = 'Sample Match (Demo)';
+    document.getElementById('match-meta').textContent = '샘플 데이터 | StatsBomb 연결 실패';
+  }
+}
+
+function processEvents() {
+  // Find a 10-minute window with interesting events
+  // Look for shots, fouls, tackles
+  const interestingTypes = ['Shot', 'Foul Committed', 'Duel', '50/50'];
+  const interesting = allEvents.filter(e =>
+    interestingTypes.includes(e.type?.name) && e.location
+  );
+
+  // Find best 10-min window
+  let bestWindow = { start: 0, count: 0 };
+  for (const ev of interesting) {
+    const sec = eventToSeconds(ev);
+    const windowEnd = sec + 600;
+    const count = interesting.filter(e => {
+      const s = eventToSeconds(e);
+      return s >= sec && s <= windowEnd;
+    }).length;
+    if (count > bestWindow.count) {
+      bestWindow = { start: sec, count };
+    }
+  }
+
+  segmentStart = bestWindow.start;
+  const segmentEnd = segmentStart + 600;
+
+  // Filter events in window, convert format
+  filteredEvents = allEvents
+    .filter(e => {
+      const sec = eventToSeconds(e);
+      return sec >= segmentStart && sec <= segmentEnd && e.location;
+    })
+    .map(e => ({
+      id: e.id,
+      rawType: e.type?.name,
+      sec: eventToSeconds(e) - segmentStart,  // relative to segment
+      x: e.location[0],  // StatsBomb: 0-120
+      y: e.location[1],  // StatsBomb: 0-80
+      isGoal: e.shot?.outcome?.name === 'Goal',
+      isShot: e.type?.name === 'Shot',
+      team: e.team?.name || '',
+      player: e.player?.name || '',
+    }))
+    .filter(e => {
+      // Keep: shots, fouls, 50/50s + goals
+      return ['Shot', 'Foul Committed', 'Duel', '50/50'].includes(e.rawType);
+    });
+
+  buildScrubberMarkers();
+  document.getElementById('play-btn').disabled = false;
+  hideLoading();
+}
+
+function eventToSeconds(ev) {
+  const period = ev.period ?? 1;
+  const [min, sec, ms] = (ev.timestamp || '0:00:00.000').split(':').map(Number);
+  const base = period === 2 ? 45 * 60 : 0;
+  return base + min * 60 + sec;
+}
+
+// Fallback sample data if StatsBomb fetch fails
+function generateSampleEvents() {
+  const events = [];
+  const types = [
+    { name: 'Shot', count: 8 },
+    { name: 'Foul Committed', count: 6 },
+    { name: 'Duel', count: 10 },
+  ];
+  let id = 1;
+  types.forEach(({ name, count }) => {
+    for (let i = 0; i < count; i++) {
+      const min = Math.floor(Math.random() * 45);
+      const sec = Math.floor(Math.random() * 60);
+      events.push({
+        id: String(id++),
+        type: { name },
+        period: 1,
+        timestamp: `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}:00.000`,
+        location: [
+          10 + Math.random() * 100,
+          5 + Math.random() * 70,
+        ],
+        shot: name === 'Shot' && Math.random() < 0.25 ? { outcome: { name: 'Goal' } } : undefined,
+        team: { name: Math.random() < 0.5 ? 'Home' : 'Away' },
+        player: { name: `Player ${id}` },
+      });
+    }
+  });
+  return events.sort((a, b) => {
+    const ta = a.timestamp, tb = b.timestamp;
+    return ta.localeCompare(tb);
+  });
+}
+
+// ═══════════════════════════════════════════════
+// PLAYBACK ENGINE
+// ═══════════════════════════════════════════════
+let playing = false;
+let currentSec = 0;
+let playSpeed = 1;
+let playInterval = null;
+let shotEvalQueue = [];
+let shotCount = 0;
+let shotCorrect = 0;
+
+function togglePlay() {
+  if (playing) pausePlayback();
+  else startPlayback();
+}
+
+function startPlayback() {
+  playing = true;
+  document.getElementById('play-btn').textContent = '⏸ 일시정지';
+  playInterval = setInterval(tick, 100);
+}
+
+function pausePlayback() {
+  playing = false;
+  document.getElementById('play-btn').textContent = '▶ 재생';
+  clearInterval(playInterval);
+}
+
+function resetTimeline() {
+  pausePlayback();
+  currentSec = 0;
+  document.getElementById('scrubber').value = 0;
+  updateTimeDisplay(0);
+  moveBallToCenter();
+  clearEventLog();
+}
+
+function onScrub(val) {
+  currentSec = Number(val);
+  updateTimeDisplay(currentSec);
+}
+
+let lastTickedSec = -1;
+function tick() {
+  if (currentSec >= 600) { pausePlayback(); return; }
+  currentSec += 0.1 * playSpeed;
+  document.getElementById('scrubber').value = Math.floor(currentSec);
+  updateTimeDisplay(currentSec);
+
+  // Fire events in this window
+  const secFloor = Math.floor(currentSec);
+  if (secFloor !== lastTickedSec) {
+    lastTickedSec = secFloor;
+    const events = filteredEvents.filter(e => Math.floor(e.sec) === secFloor);
+    events.forEach(fireEvent);
+  }
+}
+
+function fireEvent(ev) {
+  const isGoal = ev.isGoal;
+  const isShot = ev.isShot;
+
+  // Determine earcon type
+  let earconType = null;
+  if (isGoal) earconType = 'goal';
+  else if (ev.rawType === 'Shot') earconType = null; // shot without goal
+  else if (ev.rawType === 'Foul Committed') earconType = 'foul';
+  else if (['Duel', '50/50'].includes(ev.rawType)) earconType = 'tackle';
+
+  // Play earcon
+  if (earconType) {
+    AudioEngine.play(earconType, ev.x, ev.y);
+    flashCell(ev.x, ev.y, earconType);
+  }
+
+  // Move ball
+  moveBall(ev.x, ev.y);
+
+  // Log event
+  logEvent(ev, earconType);
+
+  // Gate 2 eval: track shots (with or without goal)
+  if (isShot) {
+    showShotEval(ev);
+  }
+}
+
+function moveBall(sbX, sbY) {
+  const pitchEl = document.getElementById('pitch-grid');
+  const rect = pitchEl.getBoundingClientRect();
+  const nx = sbX / 120;
+  const ny = sbY / 80;
+  const dot = document.getElementById('ball-dot');
+  // Map to pitch grid CSS coordinates
+  const pitchPad = 8;
+  const innerW = rect.width - pitchPad * 2;
+  const innerH = rect.height - pitchPad * 2;
+  dot.style.left = (pitchPad + nx * innerW) + 'px';
+  dot.style.top = (pitchPad + ny * innerH) + 'px';
+  dot.style.display = 'block';
+}
+
+function moveBallToCenter() {
+  moveBall(60, 40);
+}
+
+function flashCell(sbX, sbY, earconType) {
+  const col = Math.floor((sbX / 120) * 5);   // 0-4
+  const row = Math.floor((sbY / 80) * 3);    // 0-2
+  const cells = document.querySelectorAll('.pitch-cell');
+  const cellIdx = row * 5 + col;
+  if (cells[cellIdx]) {
+    cells[cellIdx].classList.add('flash');
+    setTimeout(() => cells[cellIdx].classList.remove('flash'), 400);
+  }
+}
+
+function logEvent(ev, earconType) {
+  const config = earconType ? EARCON_CONFIG[earconType] : null;
+  const label = ev.isGoal ? '⚽ 골!' : (config ? `${config.icon} ${config.label}` : ev.rawType);
+  const col = config?.color || '#6b6b80';
+  const zone = getZoneLabel(ev.x, ev.y);
+  const mm = String(Math.floor(ev.sec / 60)).padStart(2, '0');
+  const ss = String(Math.floor(ev.sec % 60)).padStart(2, '0');
+
+  const log = document.getElementById('event-log');
+  // Clear placeholder
+  if (log.querySelector('[style*="muted"]')) log.innerHTML = '';
+
+  const entry = document.createElement('div');
+  entry.className = 'event-entry';
+  entry.innerHTML = `
+    <span class="event-time">${mm}:${ss}</span>
+    <span class="event-type" style="color:${col}">${label}</span>
+    <span class="event-pos">${zone}</span>
+  `;
+  log.prepend(entry);
+
+  // Keep max 20 entries
+  while (log.children.length > 20) log.removeChild(log.lastChild);
+}
+
+function clearEventLog() {
+  const log = document.getElementById('event-log');
+  log.innerHTML = '<div style="font-size:12px; color:var(--muted)">재생을 시작하면 이벤트가 여기에 표시됩니다.</div>';
+}
+
+function getZoneLabel(sbX, sbY) {
+  const col = Math.floor((sbX / 120) * 3); // left/center/right
+  const row = Math.floor((sbY / 80) * 3);
+  const colL = ['왼쪽', '중앙', '오른쪽'][Math.min(col, 2)];
+  const rowL = ['근거리', '중간', '원거리'][Math.min(row, 2)];
+  return `${colL} ${rowL}`;
+}
+
+// ═══════════════════════════════════════════════
+// GATE 2 EVALUATION
+// ═══════════════════════════════════════════════
+let pendingShot = null;
+
+function showShotEval(ev) {
+  pendingShot = ev;
+  const correct3rd = getThird(ev.x);
+
+  const evalDiv = document.getElementById('eval-content');
+  const scoreRow = document.getElementById('score-display');
+  const fill = document.getElementById('score-fill');
+  const status = document.getElementById('gate-status');
+
+  const panel = document.createElement('div');
+  panel.innerHTML = `
+    <div class="eval-question">
+      🎯 방금 슛이 경기장 어느 위치에서 발생했나요?
+    </div>
+    <div class="eval-answers" id="ans-row">
+      <button class="ans-btn" onclick="submitAnswer('left', '${correct3rd}')" aria-label="왼쪽">왼쪽</button>
+      <button class="ans-btn" onclick="submitAnswer('center', '${correct3rd}')" aria-label="중앙">중앙</button>
+      <button class="ans-btn" onclick="submitAnswer('right', '${correct3rd}')" aria-label="오른쪽">오른쪽</button>
+    </div>
+  `;
+  evalDiv.prepend(panel);
+
+  // Auto-remove after 8 seconds if no answer
+  setTimeout(() => {
+    if (panel.parentNode) panel.remove();
+  }, 8000);
+}
+
+function getThird(sbX) {
+  if (sbX < 40) return 'left';
+  if (sbX < 80) return 'center';
+  return 'right';
+}
+
+function submitAnswer(answer, correct) {
+  const row = document.getElementById('ans-row');
+  if (!row) return;
+  shotCount++;
+  const isCorrect = answer === correct;
+  if (isCorrect) shotCorrect++;
+
+  // Visual feedback
+  Array.from(row.children).forEach(btn => {
+    const val = btn.getAttribute('onclick').match(/'(\w+)'/)?.[1];
+    if (val === correct) btn.classList.add('correct');
+    if (val === answer && !isCorrect) btn.classList.add('wrong');
+    btn.disabled = true;
+  });
+
+  updateScore();
+
+  // Auto-remove question panel after 1.5s
+  setTimeout(() => {
+    const panel = row.closest('div');
+    if (panel?.parentNode) panel.remove();
+  }, 1500);
+}
+
+function updateScore() {
+  const pct = shotCount > 0 ? (shotCorrect / shotCount) * 100 : 0;
+  document.getElementById('score-display').textContent = `${shotCorrect}/${shotCount}`;
+  document.getElementById('score-fill').style.width = pct + '%';
+
+  const status = document.getElementById('gate-status');
+  if (shotCount < 3) {
+    status.textContent = `${3 - shotCount}개 더 필요`;
+    status.className = 'gate-status gate-pending';
+  } else if (shotCorrect / shotCount >= 0.6) {
+    status.textContent = `✅ Gate 2 합격! (${shotCorrect}/${shotCount} 정답)`;
+    status.className = 'gate-status gate-pass';
+  } else {
+    status.textContent = `❌ 미통과 (${shotCorrect}/${shotCount} — 2/3 이상 필요)`;
+    status.className = 'gate-status gate-fail';
+  }
+}
+
+// ═══════════════════════════════════════════════
+// STRESS TEST
+// ═══════════════════════════════════════════════
+function runStressTest() {
+  // Pick 3 random events from filteredEvents
+  const shots = filteredEvents.filter(e => e.isShot);
+  if (shots.length < 3) {
+    alert('슛 이벤트가 3개 미만입니다. 더 많은 데이터가 필요합니다.');
+    return;
+  }
+
+  const selected = shots.sort(() => Math.random() - 0.5).slice(0, 3);
+  const lastEv = selected[2];
+
+  // Play in rapid succession
+  [0, 600, 1200].forEach((delay, i) => {
+    setTimeout(() => {
+      const ev = selected[i];
+      AudioEngine.play('tackle', ev.x, ev.y); // use tackle for stress (distinct)
+      moveBall(ev.x, ev.y);
+    }, delay);
+  });
+
+  // After 3rd, show eval
+  setTimeout(() => {
+    showShotEval(lastEv);
+    document.getElementById('stress-btn').textContent = '✅ 실행됨 — 마지막 이벤트 위치는?';
+  }, 1300);
+}
+
+// ═══════════════════════════════════════════════
+// SPEED CONTROL
+// ═══════════════════════════════════════════════
+function setSpeed(s) {
+  playSpeed = s;
+  ['1x', '2x', '5x'].forEach(id => {
+    document.getElementById(`speed-${id}`).classList.remove('active');
+  });
+  document.getElementById(`speed-${s}x`).classList.add('active');
+}
+
+// ═══════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════
+function updateTimeDisplay(sec) {
+  const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+  const ss = String(Math.floor(sec % 60)).padStart(2, '0');
+  document.getElementById('time-display').textContent = `${mm}:${ss}`;
+}
+
+function buildPitchGrid() {
+  const grid = document.getElementById('pitch-grid');
+  // Insert 15 cells (5 cols × 3 rows)
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 5; col++) {
+      const cell = document.createElement('div');
+      cell.className = 'pitch-cell';
+      cell.dataset.row = row;
+      cell.dataset.col = col;
+      const colLabel = ['완전 왼쪽', '왼쪽', '중앙', '오른쪽', '완전 오른쪽'][col];
+      const rowLabel = ['근거리', '중간', '원거리'][row];
+      cell.setAttribute('aria-label', `${rowLabel} ${colLabel} 구역`);
+      grid.appendChild(cell);
+    }
+  }
+  // Re-append ball dot and markings on top
+  grid.appendChild(document.getElementById('ball-dot'));
+  moveBallToCenter();
+}
+
+function buildEarconLegend() {
+  const list = document.getElementById('earcon-list');
+  list.innerHTML = '';
+  Object.entries(EARCON_CONFIG).forEach(([type, cfg]) => {
+    const item = document.createElement('div');
+    item.className = 'earcon-item';
+    item.innerHTML = `
+      <div class="earcon-left">
+        <div class="earcon-dot" style="background:${cfg.color}"></div>
+        <div>
+          <div class="earcon-name">${cfg.icon} ${cfg.label}</div>
+          <div class="earcon-desc">${cfg.desc}</div>
+        </div>
+      </div>
+      <div class="earcon-controls">
+        <button class="test-btn" onclick="testEarcon('${type}')" aria-label="${cfg.label} 테스트">▶</button>
+        <button class="mute-btn" id="mute-${type}" onclick="toggleMute('${type}')" aria-label="${cfg.label} 음소거 토글">음소거</button>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+function testEarcon(type) {
+  // Play at center-left position for test
+  AudioEngine.play(type, 40, 40);
+}
+
+function toggleMute(type) {
+  const muted = AudioEngine.toggleMute(type);
+  const btn = document.getElementById(`mute-${type}`);
+  btn.classList.toggle('muted', muted);
+  btn.textContent = muted ? '해제' : '음소거';
+}
+
+function buildScrubberMarkers() {
+  const container = document.getElementById('scrubber-markers');
+  container.innerHTML = '';
+  filteredEvents.forEach(ev => {
+    const pct = (ev.sec / 600) * 100;
+    const color = ev.isGoal ? '#ffd700'
+      : ev.rawType === 'Foul Committed' ? '#ff6b6b'
+      : '#6b6b80';
+    const marker = document.createElement('div');
+    marker.className = 'event-marker';
+    marker.style.left = pct + '%';
+    marker.style.background = color;
+    container.appendChild(marker);
+  });
+}
+
+function setLoadingMsg(msg) {
+  document.getElementById('loading-msg').textContent = msg;
+}
+function hideLoading() {
+  document.getElementById('loading').style.display = 'none';
+  // Show audio unlock overlay
+  document.getElementById('audio-unlock').classList.add('visible');
+}
+
+async function unlockAudio() {
+  await AudioEngine.init();
+  document.getElementById('audio-unlock').classList.remove('visible');
+}
+
+// Check browser
+function checkBrowser() {
+  const isFF = navigator.userAgent.toLowerCase().includes('firefox');
+  if (isFF) {
+    document.getElementById('browser-warn').style.display = 'block';
+  }
+}
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+checkBrowser();
+buildPitchGrid();
+buildEarconLegend();
+loadStatsBomb();
+</script>
+</body>
+</html>
