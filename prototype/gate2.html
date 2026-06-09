@@ -30,11 +30,11 @@
 
     .section-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;align-self:flex-start;}
 
-    /* ── Tennis Court (3×3) ── */
-    .court-wrapper{width:100%;max-width:480px;}
+    /* ── Tennis Court (3×3, landscape — TV view) ── */
+    .court-wrapper{width:100%;max-width:640px;}
     .court-grid{
       display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
-      gap:3px;aspect-ratio:3/4;background:#0d1f0d;border:2px solid #1a3a1a;
+      gap:3px;aspect-ratio:4/3;background:#0d1f0d;border:2px solid #1a3a1a;
       border-radius:8px;padding:6px;position:relative;overflow:hidden;
     }
     .court-cell{
@@ -44,18 +44,18 @@
     .court-cell.flash{animation:cell-flash 0.4s ease-out;}
     @keyframes cell-flash{0%{background:rgba(79,255,176,0.45);}100%{background:rgba(255,255,255,0.03);}}
 
-    /* Net line (between row 1 and row 2) */
+    /* Net line — vertical, between col 1 and col 2 (landscape court) */
     .net-line{
-      position:absolute;left:6px;right:6px;height:3px;
+      position:absolute;top:6px;bottom:6px;width:3px;
       background:rgba(255,255,255,0.25);border-radius:2px;
-      /* row height: (100%-12px-2*3px)/3 ≈ 30.7% each, net between row1 and row2 */
-      top:calc(6px + (100% - 18px)/3 + 3px + (100% - 18px)/3 / 2 - 1px);
+      /* col width: (100%-12px-2*3px)/3 each, net between col 1 and col 2 */
+      left:calc(6px + (100% - 18px)/3 + 3px + (100% - 18px)/3 / 2 - 1px);
       pointer-events:none;z-index:2;
     }
     .net-label{
-      position:absolute;right:8px;font-size:9px;color:rgba(255,255,255,0.3);
-      top:calc(6px + (100% - 18px)/3 + 3px + (100% - 18px)/3 / 2 - 7px);
-      pointer-events:none;z-index:3;
+      position:absolute;top:8px;font-size:9px;color:rgba(255,255,255,0.3);
+      left:calc(6px + (100% - 18px)/3 + 3px + (100% - 18px)/3 / 2 - 12px);
+      pointer-events:none;z-index:3;writing-mode:vertical-rl;
     }
 
     /* Ball dot */
@@ -65,8 +65,9 @@
       box-shadow:0 0 8px rgba(200,255,0,0.8);pointer-events:none;z-index:10;display:none;
     }
 
-    .court-labels-h{display:flex;justify-content:space-around;width:100%;max-width:480px;font-size:10px;color:var(--muted);padding:0 6px;}
-    .court-labels-v{position:absolute;left:-52px;top:0;height:100%;display:flex;flex-direction:column;justify-content:space-around;font-size:10px;color:var(--muted);text-align:right;width:48px;}
+    /* Landscape court: top labels = depth (near/service/far), left labels = width (deuce/center/ad) */
+    .court-labels-h{display:flex;justify-content:space-around;width:100%;max-width:640px;font-size:10px;color:var(--muted);padding:0 6px;}
+    .court-labels-v{position:absolute;left:-46px;top:0;height:100%;display:flex;flex-direction:column;justify-content:space-around;font-size:10px;color:var(--muted);text-align:right;width:42px;}
 
     /* ── Timeline ── */
     .timeline{width:100%;max-width:480px;}
@@ -175,22 +176,23 @@
 
     <div class="court-wrapper" style="position:relative;">
       <div style="position:relative;">
-        <!-- Vertical labels -->
+        <!-- Left labels: court width (deuce / center / ad) -->
         <div class="court-labels-v">
-          <span>근거리<br>베이스라인</span>
-          <span>서비스박스</span>
-          <span>원거리<br>베이스라인</span>
+          <span>듀스</span>
+          <span>센터</span>
+          <span>어드</span>
         </div>
-        <div class="court-grid" id="court-grid" role="img" aria-label="테니스 코트 구역 격자. 3열(좌우)×3행(앞뒤)">
+        <div class="court-grid" id="court-grid" role="img" aria-label="테니스 코트 (TV 뷰). 가로: 근거리→원거리, 세로: 듀스→어드">
           <div class="net-line" aria-hidden="true"></div>
           <div class="net-label" aria-hidden="true">NET</div>
           <div id="ball-dot" aria-hidden="true"></div>
         </div>
       </div>
+      <!-- Top labels: court depth (near / service box / far) -->
       <div class="court-labels-h">
-        <span>왼쪽 (듀스)</span>
-        <span>센터</span>
-        <span>오른쪽 (어드)</span>
+        <span>← 근거리</span>
+        <span>서비스박스</span>
+        <span>원거리 →</span>
       </div>
     </div>
 
@@ -482,29 +484,33 @@ function fire(ev){
   if(['ace','winner'].includes(ev.type)) showEval(ev);
 }
 
-// ═══ BALL / GRID ══════════════════════════════
+// ═══ BALL / GRID (landscape TV view) ══════════════════════════════
+// x=0-100: deuce→ad (maps to visual TOP→BOTTOM)
+// y=0-100: near→far  (maps to visual LEFT→RIGHT)
 function moveBall(x,y){
   const g=document.getElementById('court-grid');
   const r=g.getBoundingClientRect(), pad=6;
   const dot=document.getElementById('ball-dot');
-  dot.style.left=(pad+(x/100)*(r.width-pad*2))+'px';
-  dot.style.top =(pad+(y/100)*(r.height-pad*2))+'px';
+  dot.style.left=(pad+(y/100)*(r.width-pad*2))+'px';   // y = left/right
+  dot.style.top =(pad+(x/100)*(r.height-pad*2))+'px';  // x = top/bottom
   dot.style.display='block';
-  // flash cell
-  const col=Math.min(2,Math.floor((x/100)*3));
-  const row=Math.min(2,Math.floor((y/100)*3));
+  // flash cell: col=y-axis (near→far), row=x-axis (deuce→ad)
+  const col=Math.min(2,Math.floor((y/100)*3));
+  const row=Math.min(2,Math.floor((x/100)*3));
   const cells=document.querySelectorAll('.court-cell');
   const idx=row*3+col;
   cells[idx]?.classList.add('flash');
   setTimeout(()=>cells[idx]?.classList.remove('flash'),400);
 }
 
-// ═══ ZONE LABEL ════════════════════════════════
+// ═══ ZONE LABEL (landscape: col=depth, row=width) ════════════════════════════════
 function zone(x,y){
-  const c=Math.min(2,Math.floor((x/100)*3)),r=Math.min(2,Math.floor((y/100)*3));
-  return ['왼쪽(듀스)','센터','오른쪽(어드)'][c]+' '+['근거리','서비스박스','원거리'][r];
+  const col=Math.min(2,Math.floor((y/100)*3)); // y=near→far = left→right col
+  const row=Math.min(2,Math.floor((x/100)*3)); // x=deuce→ad = top→bottom row
+  return ['듀스','센터','어드'][row]+' '+['근거리','서비스박스','원거리'][col];
 }
-function third(x){return x<33?'left':x<67?'center':'right';}
+// Gate 2 eval: ask about y-axis (near/service/far) since that's now left/right on screen
+function third(y){return y<33?'left':y<67?'center':'right';}
 
 // ═══ LOG ══════════════════════════════════════
 function logEv(ev){
@@ -522,7 +528,7 @@ function logEv(ev){
 
 // ═══ GATE 2 EVAL ══════════════════════════════
 function showEval(ev){
-  const correct=third(ev.x);
+  const correct=third(ev.y);  // y = left/right on screen (near→far)
   const area=document.getElementById('eval-area');
   const panel=document.createElement('div');
   panel.innerHTML=`
@@ -581,10 +587,12 @@ function setMsg(m){document.getElementById('load-msg').textContent=m;}
 
 function buildCourtGrid(){
   const g=document.getElementById('court-grid');
+  // landscape: row=x-axis (deuce/center/ad), col=y-axis (near/service/far)
   for(let r=0;r<3;r++) for(let c=0;c<3;c++){
     const cell=document.createElement('div');cell.className='court-cell';
     cell.dataset.row=r;cell.dataset.col=c;
-    const cl=['왼쪽 듀스','센터','오른쪽 어드'][c],rl=['근거리','서비스박스','원거리'][r];
+    const cl=['근거리','서비스박스','원거리'][c];
+    const rl=['듀스','센터','어드'][r];
     cell.setAttribute('aria-label',`${rl} ${cl} 구역`);
     g.insertBefore(cell,document.getElementById('ball-dot'));
   }
