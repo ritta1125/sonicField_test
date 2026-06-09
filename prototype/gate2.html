@@ -169,6 +169,7 @@
   <div class="match-info"><strong id="match-title">Loading...</strong><br><span id="match-meta"></span></div>
   <div style="display:flex;gap:8px;align-items:center;">
     <select id="match-select" style="font-size:12px;padding:5px 8px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+      <option value="iyerin-v22">🤖 이서진 vs 이예린 (AI 분석 — v22)</option>
       <option value="chung-djokovic">🇰🇷 정현 vs Djokovic — 2018 AO</option>
       <option value="kwon-anderson">🇰🇷 권순우 vs Anderson — 2021 Vienna</option>
       <option value="alcaraz-djokovic">⭐ Alcaraz vs Djokovic — 2024 Wimbledon F</option>
@@ -221,7 +222,7 @@
         <input type="range" id="scrubber" min="0" max="600" value="0" oninput="onScrub(this.value)" aria-label="타임라인">
         <div class="markers" id="markers"></div>
       </div>
-      <div class="time-ends"><span>0:00</span><span>10:00</span></div>
+      <div class="time-ends"><span>0:00</span><span class="time-end">10:00</span></div>
     </div>
 
     <!-- Stress test -->
@@ -622,11 +623,58 @@ function buildRealMatch(cfg){
 let matchEvents=[], playing=false, curSec=0, speed=1, iv=null;
 let shotQ=0, shotC=0;
 let currentMatchMeta={};
+let matchDuration=600; // updated per-match
+
+function setDuration(sec){
+  matchDuration=sec;
+  document.getElementById('scrubber').max=Math.ceil(sec);
+  // update end-time label
+  const el=document.querySelector('.time-end');
+  if(el){ const mm=String(Math.floor(sec/60)).padStart(2,'0'),ss=String(Math.floor(sec%60)).padStart(2,'0'); el.textContent=`${mm}:${ss}`; }
+}
 
 function loadData(){
-  const sel=document.getElementById('match-select')?.value||'chung-djokovic';
+  const sel=document.getElementById('match-select')?.value||'iyerin-v22';
   setMsg('경기 데이터 불러오는 중...');
   reset();
+
+  // ── AI-analysed bundle from ai_commentary-master ──
+  if(sel==='iyerin-v22'){
+    fetch('bridge_iyerin_v22.json')
+      .then(r=>{ if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(bundle=>{
+        // Map bundle events → SonicField event format
+        matchEvents = bundle.events
+          .filter(e=>e.trust==='speech_ready')  // governance gate: only verified events
+          .map(e=>({
+            event_id: e.event_id,
+            type:     e.type,
+            x:        e.x,
+            y:        e.y,
+            relSec:   e.t,       // t is already relative (starts at 0)
+            commentary: e.commentary,  // LLM해설 직접 보관
+            phase:    e.phase,
+            _isAI:    true,      // flag: use ev.commentary directly, skip template
+          }));
+        currentMatchMeta={home:bundle.home, away:bundle.away, _ai:true};
+        document.getElementById('match-title').textContent=`${bundle.home} vs ${bundle.away}`;
+        document.getElementById('match-meta').textContent=bundle.competition;
+        setDuration(bundle.duration);
+        buildMarkers();
+        document.getElementById('play-btn').disabled=false;
+        document.getElementById('loading').style.display='none';
+        document.getElementById('audio-unlock').classList.add('show');
+        setMsg(`✅ AI 분석 데이터 로드 완료 — ${matchEvents.length}개 이벤트 (speech-ready)`);
+      })
+      .catch(err=>{
+        setMsg(`❌ bridge_iyerin_v22.json 로드 실패: ${err.message}`);
+        console.error(err);
+      });
+    return; // async — rest handled in .then()
+  }
+
+  // ── Stat-simulated / real matches ──
+  setDuration(600);
   if(sel==='sim'||!REAL_MATCHES[sel]){
     matchEvents=generateMatch();
     currentMatchMeta={home:'정현 (Chung Hyeon)',away:'Carlos Alcaraz'};
@@ -673,7 +721,7 @@ function reset(){
 function onScrub(v){curSec=Number(v);setTime(curSec);}
 let lastSec=-1;
 function tick(){
-  if(curSec>=600){clearInterval(iv);playing=false;document.getElementById('play-btn').textContent='▶ 재생';return;}
+  if(curSec>=matchDuration){clearInterval(iv);playing=false;document.getElementById('play-btn').textContent='▶ 재생';return;}
   curSec+=0.1*speed;
   document.getElementById('scrubber').value=Math.floor(curSec);
   setTime(curSec);
@@ -689,8 +737,10 @@ function fire(ev){
   else Audio.play(ev.type,ev.x,ev.y);
   logEv(ev);
   if(['ace','winner'].includes(ev.type)) showEval(ev);
-  // 해설: fires 350ms after earcon so sound comes first
-  const line=getCommentary(ev,currentMatchMeta);
+  // 해설: AI 분석 이벤트는 LLM 해설 직접 사용, 아니면 템플릿
+  const line = ev._isAI && ev.commentary
+    ? ev.commentary
+    : getCommentary(ev, currentMatchMeta);
   Commentary.speak(line, 350);
 }
 
@@ -731,7 +781,8 @@ function logEv(ev){
   const ss=String(Math.floor(ev.relSec%60)).padStart(2,'0');
   const en=document.createElement('div');
   en.className='ev-entry';
-  en.innerHTML=`<span class="ev-time">${mm}:${ss}</span><span style="color:${cfg.color};font-weight:700">${cfg.icon} ${cfg.label}</span><span class="ev-zone">${zone(ev.x,ev.y)}</span>`;
+  const aiTag=ev._isAI?` <span style="font-size:9px;background:#2a1a4a;color:#b39ddb;padding:1px 4px;border-radius:3px;font-weight:600;">AI</span>`:'';
+  en.innerHTML=`<span class="ev-time">${mm}:${ss}</span><span style="color:${cfg.color};font-weight:700">${cfg.icon} ${cfg.label}</span>${aiTag}<span class="ev-zone">${zone(ev.x,ev.y)}</span>`;
   log.prepend(en);
   while(log.children.length>20) log.removeChild(log.lastChild);
 }
@@ -832,9 +883,11 @@ function toggleM(t){
 function buildMarkers(){
   const c=document.getElementById('markers');c.innerHTML='';
   matchEvents.forEach(ev=>{
-    const pct=(ev.relSec/600)*100;
+    const pct=(ev.relSec/matchDuration)*100;
     const m=document.createElement('div');m.className='marker';
     m.style.left=pct+'%';m.style.background=EC[ev.type]?.color??'#6b6b80';
+    // AI 이벤트는 약간 더 크게 표시
+    if(ev._isAI) m.style.height='8px';
     c.appendChild(m);
   });
 }
