@@ -96,7 +96,7 @@
     .pitch-label-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; padding: 0 4px; }
     .pitch-grid {
       display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
-      gap: 3px; aspect-ratio: 3/4; background: #0d1f0d; border: 2px solid #1a3a1a;
+      gap: 3px; aspect-ratio: 4/3; background: #0d1f0d; border: 2px solid #1a3a1a;
       border-radius: 8px; padding: 6px; position: relative; overflow: hidden;
     }
     .pitch-cell {
@@ -187,7 +187,7 @@
     /* Playground court — tappable cells */
     #pg-pitch {
       display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
-      gap: 4px; aspect-ratio: 3/4; background: #0d1f0d; border: 2px solid #1a3a1a;
+      gap: 4px; aspect-ratio: 4/3; background: #0d1f0d; border: 2px solid #1a3a1a;
       border-radius: 8px; padding: 8px; margin-bottom: 16px;
     }
     .pg-cell {
@@ -327,13 +327,15 @@
     </div>
 
     <!-- Court grid -->
-    <div class="pitch-container" aria-label="테니스 코트 구역 격자 (3열×3행)" role="img">
-      <div class="pitch-label-row"><span>왼쪽(듀스)</span><span>센터</span><span>오른쪽(어드)</span></div>
-      <div class="pitch-grid" id="pitch-grid">
+    <div class="pitch-container" aria-label="테니스 코트 (TV 뷰). 가로: 근거리→원거리, 세로: 듀스→어드" role="img">
+      <div class="pitch-label-row" style="font-size:10px"><span>듀스</span><span>센터</span><span>어드</span></div>
+      <div class="pitch-grid" id="pitch-grid" style="position:relative;">
         <!-- Cells injected by JS -->
+        <!-- NET vertical line -->
+        <div aria-hidden="true" style="position:absolute;top:6px;bottom:6px;width:2px;background:rgba(255,255,255,0.2);border-radius:1px;left:calc(6px + (100% - 18px)/3 + 3px + (100% - 18px)/3/2 - 1px);pointer-events:none;z-index:2;"></div>
         <div id="ball-dot" aria-hidden="true"></div>
       </div>
-      <div class="pitch-label-row" style="margin-top:4px"><span>근거리</span><span>서비스박스</span><span>원거리</span></div>
+      <div class="pitch-label-row" style="margin-top:4px;font-size:10px"><span>← 근거리</span><span>서비스박스</span><span>원거리 →</span></div>
     </div>
 
     <!-- Earcon toggles -->
@@ -548,15 +550,15 @@ function initActiveListening({ match } = {}) {
 
 function buildPitchGrid() {
   const grid = document.getElementById('pitch-grid');
-  // Remove old cells but keep ball-dot
   Array.from(grid.querySelectorAll('.pitch-cell')).forEach(c => c.remove());
+  // landscape: row = x-axis (deuce/center/ad), col = y-axis (near/service/far)
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 3; col++) {
       const cell = document.createElement('div');
       cell.className = 'pitch-cell';
       cell.dataset.row = row; cell.dataset.col = col;
-      const colL = ['왼쪽(듀스)','센터','오른쪽(어드)'][col];
-      const rowL = ['근거리 베이스라인','서비스박스','원거리 베이스라인'][row];
+      const colL = ['근거리','서비스박스','원거리'][col];
+      const rowL = ['듀스','센터','어드'][row];
       cell.setAttribute('aria-label', `${rowL} ${colL} 구역`);
       grid.insertBefore(cell, document.getElementById('ball-dot'));
     }
@@ -593,17 +595,19 @@ window.toggleMuteEarcon = function(type) {
 };
 
 function moveBall(x, y) {
+  // landscape TV view: y=near→far = left→right, x=deuce→ad = top→bottom
   const grid = document.getElementById('pitch-grid');
   if (!grid) return;
   const rect = grid.getBoundingClientRect();
   const pad = 6;
   const dot = document.getElementById('ball-dot');
   if (!dot) return;
-  dot.style.left = (pad + (x / 100) * (rect.width - pad * 2)) + 'px';
-  dot.style.top  = (pad + (y / 100) * (rect.height - pad * 2)) + 'px';
+  dot.style.left = (pad + (y / 100) * (rect.width  - pad * 2)) + 'px';
+  dot.style.top  = (pad + (x / 100) * (rect.height - pad * 2)) + 'px';
   dot.style.display = 'block';
 
-  const { col, row } = getGridCell(x, y);
+  const col = Math.min(2, Math.floor((y / 100) * 3)); // near→far = left col
+  const row = Math.min(2, Math.floor((x / 100) * 3)); // deuce→ad = top row
   const cells = document.querySelectorAll('.pitch-cell');
   const idx = row * 3 + col;
   cells[idx]?.classList.add('flash');
@@ -655,9 +659,9 @@ function logEvent(ev) {
   const now  = new Date();
   const mm   = String(now.getMinutes()).padStart(2,'0');
   const ss   = String(now.getSeconds()).padStart(2,'0');
-  const colL  = Math.min(2, Math.floor((ev.x/100)*3));
-  const rowL  = Math.min(2, Math.floor((ev.y/100)*3));
-  const zone = ['왼쪽(듀스)','센터','오른쪽(어드)'][colL] + ' ' + ['근거리','서비스박스','원거리'][rowL];
+  const col = Math.min(2, Math.floor((ev.y/100)*3)); // y = near→far = left col
+  const row = Math.min(2, Math.floor((ev.x/100)*3)); // x = deuce→ad = top row
+  const zone = ['듀스','센터','어드'][row] + ' ' + ['근거리','서비스박스','원거리'][col];
 
   const entry = document.createElement('div');
   entry.className = 'event-entry';
@@ -750,12 +754,13 @@ function initPlayground() {
       const cell = document.createElement('div');
       cell.className = 'pg-cell';
       cell.setAttribute('role', 'gridcell');
-      const colL = ['왼쪽(듀스)','센터','오른쪽(어드)'][col];
-      const rowL = ['근거리 베이스라인','서비스박스','원거리 베이스라인'][row];
+      // landscape: row=x(deuce→ad), col=y(near→far)
+      const colL = ['근거리','서비스박스','원거리'][col];
+      const rowL = ['듀스','센터','어드'][row];
       cell.setAttribute('aria-label', `${rowL} ${colL} 구역에서 ${EARCON_META[pgEarcon]?.label ?? pgEarcon} 재생`);
       cell.setAttribute('tabindex', '0');
-      const sbX = ((col + 0.5) / 3) * 100;
-      const sbY = ((row + 0.5) / 3) * 100;
+      const sbX = ((row + 0.5) / 3) * 100; // row → x coordinate
+      const sbY = ((col + 0.5) / 3) * 100; // col → y coordinate
       const fire = async () => {
         await unlockAudioIfNeeded();
         audio.play(pgEarcon, sbX, sbY);
