@@ -94,64 +94,126 @@ export class AudioEngine {
 }
 
 // ─────────────────────────────────────────────
+// Ball impact helper — acoustic "탁" (snare-like thwack)
+// vel: 0.5 (soft) → 1.0 (hard smash)
+// ─────────────────────────────────────────────
+function _ballHit(ctx, dest, t, vel = 1.0) {
+  const sr = ctx.sampleRate;
+
+  // 1. Crack transient — high-freq noise through HPF (strings snapping on impact)
+  const crackLen = Math.floor(sr * 0.028);
+  const crackBuf = ctx.createBuffer(1, crackLen, sr);
+  const crackData = crackBuf.getChannelData(0);
+  for (let i = 0; i < crackLen; i++) {
+    crackData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (crackLen * 0.07));
+  }
+  const crack     = ctx.createBufferSource();
+  const hpf       = ctx.createBiquadFilter();
+  const crackGain = ctx.createGain();
+  crack.buffer = crackBuf;
+  hpf.type = 'highpass'; hpf.frequency.value = 3500; hpf.Q.value = 0.6;
+  crackGain.gain.setValueAtTime(0, t);
+  crackGain.gain.linearRampToValueAtTime(1.0 * vel, t + 0.001);
+  crackGain.gain.exponentialRampToValueAtTime(0.001, t + 0.028);
+  crack.connect(hpf); hpf.connect(crackGain); crackGain.connect(dest);
+  crack.start(t);
+
+  // 2. Body thump — pitched sine drop (220→50 Hz) — the hollow ball compression
+  const thump     = ctx.createOscillator();
+  const thumpGain = ctx.createGain();
+  thump.type = 'sine';
+  thump.frequency.setValueAtTime(220, t);
+  thump.frequency.exponentialRampToValueAtTime(50, t + 0.045);
+  thumpGain.gain.setValueAtTime(0, t);
+  thumpGain.gain.linearRampToValueAtTime(0.7 * vel, t + 0.001);
+  thumpGain.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+  thump.connect(thumpGain); thumpGain.connect(dest);
+  thump.start(t); thump.stop(t + 0.06);
+
+  // 3. Mid ring — bandpass noise 500-700 Hz (court surface resonance)
+  const ringLen  = Math.floor(sr * 0.07);
+  const ringBuf  = ctx.createBuffer(1, ringLen, sr);
+  const ringData = ringBuf.getChannelData(0);
+  for (let i = 0; i < ringLen; i++) {
+    ringData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ringLen * 0.22));
+  }
+  const ring     = ctx.createBufferSource();
+  const bpf      = ctx.createBiquadFilter();
+  const ringGain = ctx.createGain();
+  ring.buffer = ringBuf;
+  bpf.type = 'bandpass'; bpf.frequency.value = 580; bpf.Q.value = 3.5;
+  ringGain.gain.setValueAtTime(0, t);
+  ringGain.gain.linearRampToValueAtTime(0.45 * vel, t + 0.002);
+  ringGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+  ring.connect(bpf); bpf.connect(ringGain); ringGain.connect(dest);
+  ring.start(t);
+}
+
+// ─────────────────────────────────────────────
 // Tennis Earcon Synthesis
 // ─────────────────────────────────────────────
 export const SYNTH = {
 
-  /** 에이스: clean serve no one touches — bright sharp rise */
+  /** 에이스: serve nobody touches — hard hit + ball flying away */
   ace(ctx, dest) {
     const t = ctx.currentTime;
-    // Quick rising swoosh + chime
+    // Sharp serve impact first
+    _ballHit(ctx, dest, t, 1.0);
+    // Rising swoosh — ball whipping through air
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(600, t);
-    osc.frequency.exponentialRampToValueAtTime(1800, t + 0.12);
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.5, t + 0.04);
+    osc.frequency.setValueAtTime(500, t + 0.02);
+    osc.frequency.exponentialRampToValueAtTime(1600, t + 0.18);
+    gain.gain.setValueAtTime(0, t + 0.02);
+    gain.gain.linearRampToValueAtTime(0.3, t + 0.06);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
     osc.connect(gain); gain.connect(dest);
-    osc.start(t); osc.stop(t + 0.5);
-    // trailing ping
+    osc.start(t + 0.02); osc.stop(t + 0.5);
+    // high ping on landing
     const osc2  = ctx.createOscillator();
     const gain2 = ctx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.value = 2200;
-    gain2.gain.setValueAtTime(0, t + 0.1);
-    gain2.gain.linearRampToValueAtTime(0.3, t + 0.12);
+    osc2.type = 'sine'; osc2.frequency.value = 2200;
+    gain2.gain.setValueAtTime(0, t + 0.22);
+    gain2.gain.linearRampToValueAtTime(0.25, t + 0.24);
     gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
     osc2.connect(gain2); gain2.connect(dest);
-    osc2.start(t + 0.1); osc2.stop(t + 0.6);
+    osc2.start(t + 0.22); osc2.stop(t + 0.6);
   },
 
-  /** 폴트: serve error — flat dull thud, downward */
+  /** 폴트: serve error — thud into net or long */
   fault(ctx, dest) {
     const t = ctx.currentTime;
+    // Softer, lower hit — ball dies quickly
+    _ballHit(ctx, dest, t, 0.6);
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(300, t);
-    osc.frequency.exponentialRampToValueAtTime(80, t + 0.2);
-    gain.gain.setValueAtTime(0.4, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    osc.frequency.setValueAtTime(200, t + 0.01);
+    osc.frequency.exponentialRampToValueAtTime(60, t + 0.18);
+    gain.gain.setValueAtTime(0.3, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
     osc.connect(gain); gain.connect(dest);
-    osc.start(t); osc.stop(t + 0.3);
+    osc.start(t + 0.01); osc.stop(t + 0.25);
   },
 
-  /** 위너: clean winner — bright double-ping */
+  /** 위너: clean winner — hard smash, ball bounces unreturnable */
   winner(ctx, dest) {
     const t = ctx.currentTime;
-    [[900, 0], [1350, 0.1]].forEach(([freq, delay]) => {
+    // Hard impact
+    _ballHit(ctx, dest, t, 1.1);
+    // Bright resonance — satisfying crack
+    [[800, 0.02], [1200, 0.1]].forEach(([freq, delay]) => {
       const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, t + delay);
-      osc.frequency.exponentialRampToValueAtTime(freq * 0.75, t + delay + 0.5);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.7, t + delay + 0.4);
       gain.gain.setValueAtTime(0, t + delay);
-      gain.gain.linearRampToValueAtTime(0.4, t + delay + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.55);
+      gain.gain.linearRampToValueAtTime(0.35, t + delay + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.45);
       osc.connect(gain); gain.connect(dest);
-      osc.start(t + delay); osc.stop(t + delay + 0.6);
+      osc.start(t + delay); osc.stop(t + delay + 0.5);
     });
   },
 
@@ -171,26 +233,12 @@ export const SYNTH = {
     });
   },
 
-  /** 랠리: long exchange — rhythmic ball-bounce pattern */
+  /** 랠리: back-and-forth exchange — 4 real ball thwacks */
   rally(ctx, dest) {
     const t = ctx.currentTime;
-    // Simulate 4 rapid ball impacts
-    [0, 0.15, 0.3, 0.45].forEach((delay, i) => {
-      const len = Math.floor(ctx.sampleRate * 0.12);
-      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-      const d   = buf.getChannelData(0);
-      for (let j = 0; j < len; j++) {
-        d[j] = (Math.random() * 2 - 1) * Math.exp(-j / (len * 0.06));
-      }
-      const src  = ctx.createBufferSource();
-      const bpf  = ctx.createBiquadFilter();
-      const gain = ctx.createGain();
-      src.buffer = buf;
-      bpf.type = 'bandpass'; bpf.frequency.value = 800 + i * 100; bpf.Q.value = 2;
-      gain.gain.setValueAtTime(0.6, t + delay);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.12);
-      src.connect(bpf); bpf.connect(gain); gain.connect(dest);
-      src.start(t + delay);
+    // Slightly varied timing and velocity for natural feel
+    [[0, 1.0], [0.22, 0.85], [0.46, 0.95], [0.72, 0.9]].forEach(([delay, vel]) => {
+      _ballHit(ctx, dest, t + delay, vel);
     });
   },
 
