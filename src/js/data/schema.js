@@ -1,82 +1,65 @@
 /**
- * SonicField — Internal Event Schema
+ * SonicField — Internal Event Schema (Tennis Edition)
  *
- * All data sources (K-League API, StatsBomb, CV pipeline, mock)
- * normalize into this format before reaching the audio engine.
+ * x: 0-100  left (deuce side) → right (ad side)
+ * y: 0-100  near baseline (0) → net (50) → far baseline (100)
  *
- * x, y: StatsBomb convention (0-120 × 0-80) for consistency.
- * The audio engine converts to 3D coordinates internally.
- */
-
-/**
- * @typedef {Object} SFEvent
- * @property {string} event_id    - Unique event identifier
- * @property {EventType} type     - Normalized event type
- * @property {string} timestamp   - ISO 8601
- * @property {number} x           - Pitch x position, 0-120 (StatsBomb convention)
- * @property {number} y           - Pitch y position, 0-80 (StatsBomb convention)
- * @property {'home'|'away'} team - Which team
- * @property {string} match_id    - Match identifier
- * @property {object} [meta]      - Source-specific metadata (optional)
- */
-
-/**
- * @typedef {'goal'|'shot'|'foul'|'tackle'|'corner'|'penalty'|'substitution'} EventType
+ * Tennis court:
+ *   - Singles width: 8.23m  → normalized to 0-100
+ *   - Court length:  23.77m → normalized to 0-100 (net = 50)
+ *
+ * 3×3 grid cells:
+ *   col 0 (x 0-33):  왼쪽 듀스 사이드
+ *   col 1 (x 33-67): 센터
+ *   col 2 (x 67-100): 오른쪽 어드 사이드
+ *   row 0 (y 0-33):  근거리 베이스라인
+ *   row 1 (y 33-67): 서비스박스 / 네트
+ *   row 2 (y 67-100): 원거리 베이스라인
  */
 
 export const EVENT_TYPES = Object.freeze({
-  GOAL:         'goal',
-  SHOT:         'shot',          // shot that didn't result in goal
-  FOUL:         'foul',
-  TACKLE:       'tackle',
-  CORNER:       'corner',
-  PENALTY:      'penalty',
-  SUBSTITUTION: 'substitution',
+  ACE:        'ace',
+  FAULT:      'fault',
+  WINNER:     'winner',
+  BREAKPOINT: 'breakpoint',
+  RALLY:      'rally',
+  GAME:       'game',     // game/set end — center, no spatial pan
 });
 
-/** Which event types trigger a spatial earcon */
 export const SPATIAL_EARCON_TYPES = new Set([
-  'goal', 'foul', 'tackle', 'corner', 'penalty',
+  'ace', 'fault', 'winner', 'breakpoint', 'rally',
 ]);
 
-/** Which event types are played at center (no spatial pan) */
-export const CENTER_EARCON_TYPES = new Set([
-  'substitution',
-]);
+export const CENTER_EARCON_TYPES = new Set(['game']);
 
-/**
- * Validate an event object against the schema.
- * Returns { valid: true } or { valid: false, errors: string[] }
- */
+/** Get 3×3 grid cell {col: 0-2, row: 0-2} from normalized coords */
+export function getGridCell(x, y) {
+  return {
+    col: Math.min(2, Math.floor((x / 100) * 3)),
+    row: Math.min(2, Math.floor((y / 100) * 3)),
+  };
+}
+
+/** Human-readable zone label */
+export function getZoneLabel(x, y, lang = 'ko') {
+  const col = Math.min(2, Math.floor((x / 100) * 3));
+  const row = Math.min(2, Math.floor((y / 100) * 3));
+  if (lang === 'ko') {
+    const colL = ['왼쪽(듀스)', '센터', '오른쪽(어드)'][col];
+    const rowL = ['근거리 베이스라인', '서비스박스', '원거리 베이스라인'][row];
+    return `${colL} ${rowL}`;
+  }
+  const colL = ['Left (Deuce)', 'Center', 'Right (Ad)'][col];
+  const rowL = ['Near Baseline', 'Service Box', 'Far Baseline'][row];
+  return `${colL} — ${rowL}`;
+}
+
 export function validateEvent(ev) {
   const errors = [];
   if (!ev.event_id) errors.push('event_id required');
-  if (!EVENT_TYPES[ev.type?.toUpperCase()?.replace(/-/g, '_')] && !Object.values(EVENT_TYPES).includes(ev.type)) {
-    errors.push(`type "${ev.type}" not recognized`);
-  }
-  if (typeof ev.x !== 'number' || ev.x < 0 || ev.x > 120) errors.push('x must be 0-120');
-  if (typeof ev.y !== 'number' || ev.y < 0 || ev.y > 80)  errors.push('y must be 0-80');
+  if (!Object.values(EVENT_TYPES).includes(ev.type)) errors.push(`unknown type: ${ev.type}`);
+  if (typeof ev.x !== 'number' || ev.x < 0 || ev.x > 100) errors.push('x must be 0-100');
+  if (typeof ev.y !== 'number' || ev.y < 0 || ev.y > 100) errors.push('y must be 0-100');
   if (!ev.match_id) errors.push('match_id required');
   return errors.length === 0 ? { valid: true } : { valid: false, errors };
-}
-
-/**
- * Convert 0-120/0-80 (StatsBomb) to 0-100/0-100 (normalized)
- */
-export function normalizePitchCoords(x, y) {
-  return {
-    nx: (x / 120) * 100,
-    ny: (y / 80)  * 100,
-  };
-}
-
-/**
- * Get the 5×3 grid cell for a position.
- * Returns { col: 0-4, row: 0-2 }
- */
-export function getGridCell(x, y) {
-  return {
-    col: Math.min(4, Math.floor((x / 120) * 5)),
-    row: Math.min(2, Math.floor((y / 80) * 3)),
-  };
 }

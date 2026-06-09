@@ -1,11 +1,12 @@
 /**
- * SonicField Audio Engine
+ * SonicField Audio Engine — Tennis Edition
  * Web Audio API — PannerNode (HRTF) spatial audio
  *
- * Coordinate system:
- *   Listener is at center of pitch, facing the far end.
- *   StatsBomb: x=0-120 (left→right goal), y=0-80 (bottom→top)
- *   3D space: x = left/right, y = height (0), z = near/far
+ * Coordinate system (normalized):
+ *   x: 0-100  left (deuce side) → right (ad side)
+ *   y: 0-100  near baseline → far baseline (50 = net)
+ *
+ * Listener sits at center of net, facing far end.
  */
 
 export class AudioEngine {
@@ -16,7 +17,6 @@ export class AudioEngine {
     this._initialized = false;
   }
 
-  /** Must be called from a user gesture (click/tap) */
   async init() {
     if (this._initialized) return;
     this.ctx = new AudioContext();
@@ -26,35 +26,27 @@ export class AudioEngine {
     this.masterGain.gain.value = 1.0;
     this.masterGain.connect(this.ctx.destination);
 
-    // Position listener at center of pitch, facing far end
     const L = this.ctx.listener;
     if (L.positionX) {
       L.positionX.value = 0;
-      L.positionY.value = 0;
+      L.positionY.value = 2;   // slightly elevated (spectator view)
       L.positionZ.value = 0;
       L.forwardX.value  = 0;
-      L.forwardY.value  = 0;
-      L.forwardZ.value  = -1; // facing -Z = far end
-      L.upX.value = 0;
-      L.upY.value = 1;
-      L.upZ.value = 0;
+      L.forwardY.value  = -0.2;
+      L.forwardZ.value  = -1;
+      L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0;
     } else {
-      L.setPosition(0, 0, 0);
-      L.setOrientation(0, 0, -1, 0, 1, 0);
+      L.setPosition(0, 2, 0);
+      L.setOrientation(0, -0.2, -1, 0, 1, 0);
     }
-
     this._initialized = true;
   }
 
-  /** Convert StatsBomb coordinates to 3D listener space */
-  _sbToCoords(sbX, sbY) {
-    const nx = ((sbX ?? 60) / 120) * 2 - 1;  // -1 (left) to +1 (right)
-    const nz = ((sbY ?? 40) / 80) * 2 - 1;   // -1 (near) to +1 (far)
-    return {
-      x: nx * 14,       // ±14 units wide
-      y: 0,
-      z: nz * 9 - 12,  // offset behind listener so it's always in front
-    };
+  /** x: 0-100, y: 0-100 → 3D coords */
+  _toCoords(x, y) {
+    const nx = ((x ?? 50) / 100) * 2 - 1;  // -1 (left) to +1 (right)
+    const nz = ((y ?? 50) / 100) * 2 - 1;  // -1 (near) to +1 (far)
+    return { x: nx * 10, y: 0, z: nz * 12 - 8 };
   }
 
   _createPanner(x, y, z) {
@@ -62,7 +54,7 @@ export class AudioEngine {
     p.panningModel  = 'HRTF';
     p.distanceModel = 'inverse';
     p.refDistance   = 1;
-    p.rolloffFactor = 0.4;
+    p.rolloffFactor = 0.3;
     p.coneInnerAngle = 360;
     p.coneOuterAngle = 0;
     if (p.positionX) {
@@ -76,162 +68,153 @@ export class AudioEngine {
     return p;
   }
 
-  /**
-   * Play an earcon at a StatsBomb pitch position
-   * @param {string} type  - earcon type key
-   * @param {number} sbX   - StatsBomb x (0-120)
-   * @param {number} sbY   - StatsBomb y (0-80)
-   */
-  async play(type, sbX, sbY) {
+  async play(type, x, y) {
     if (this.mutedTypes.has(type)) return;
     if (!this._initialized) await this.init();
-
-    const { x, y, z } = this._sbToCoords(sbX, sbY);
-    const panner = this._createPanner(x, y, z);
-    this._synthesize(type, panner);
+    const c = this._toCoords(x, y);
+    const panner = this._createPanner(c.x, c.y, c.z);
+    SYNTH[type]?.(this.ctx, panner);
     setTimeout(() => { try { panner.disconnect(); } catch(_) {} }, 3000);
   }
 
-  /** Play substitution (always center — no spatial position) */
+  /** Game/set announcements: no spatial pan */
   async playCenter(type) {
     if (this.mutedTypes.has(type)) return;
     if (!this._initialized) await this.init();
-    this._synthesize(type, this.masterGain);
-  }
-
-  _synthesize(type, dest) {
-    const fn = SYNTH[type];
-    if (fn) fn(this.ctx, dest);
-    else console.warn(`[AudioEngine] Unknown earcon type: ${type}`);
+    SYNTH[type]?.(this.ctx, this.masterGain);
   }
 
   toggleMute(type) {
     if (this.mutedTypes.has(type)) { this.mutedTypes.delete(type); return false; }
-    this.mutedTypes.add(type);
-    return true;
+    this.mutedTypes.add(type); return true;
   }
-
   isMuted(type) { return this.mutedTypes.has(type); }
-
-  setVolume(v) {
-    if (this.masterGain) this.masterGain.gain.value = Math.max(0, Math.min(1, v));
-  }
-
+  setVolume(v)  { if (this.masterGain) this.masterGain.gain.value = Math.max(0, Math.min(1, v)); }
   get isReady() { return this._initialized; }
 }
 
 // ─────────────────────────────────────────────
-// Earcon synthesis functions
-// ctx: AudioContext, dest: AudioNode to connect to
+// Tennis Earcon Synthesis
 // ─────────────────────────────────────────────
 export const SYNTH = {
-  /** Goal: ascending C major chord — bright, celebratory */
-  goal(ctx, dest) {
+
+  /** 에이스: clean serve no one touches — bright sharp rise */
+  ace(ctx, dest) {
     const t = ctx.currentTime;
-    [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, t + i * 0.09);
-      gain.gain.linearRampToValueAtTime(0.35, t + i * 0.09 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.09 + 0.7);
-      osc.connect(gain); gain.connect(dest);
-      osc.start(t + i * 0.09);
-      osc.stop(t + i * 0.09 + 0.8);
-    });
+    // Quick rising swoosh + chime
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, t);
+    osc.frequency.exponentialRampToValueAtTime(1800, t + 0.12);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.5, t + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    osc.connect(gain); gain.connect(dest);
+    osc.start(t); osc.stop(t + 0.5);
+    // trailing ping
+    const osc2  = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.value = 2200;
+    gain2.gain.setValueAtTime(0, t + 0.1);
+    gain2.gain.linearRampToValueAtTime(0.3, t + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    osc2.connect(gain2); gain2.connect(dest);
+    osc2.start(t + 0.1); osc2.stop(t + 0.6);
   },
 
-  /** Foul: sharp whistle burst */
-  foul(ctx, dest) {
+  /** 폴트: serve error — flat dull thud, downward */
+  fault(ctx, dest) {
     const t = ctx.currentTime;
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(2400, t);
-    osc.frequency.exponentialRampToValueAtTime(1700, t + 0.18);
-    gain.gain.setValueAtTime(0.5, t);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(300, t);
+    osc.frequency.exponentialRampToValueAtTime(80, t + 0.2);
+    gain.gain.setValueAtTime(0.4, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
     osc.connect(gain); gain.connect(dest);
     osc.start(t); osc.stop(t + 0.3);
   },
 
-  /** Tackle: low percussive thud (bandlimited noise) */
-  tackle(ctx, dest) {
-    const t   = ctx.currentTime;
-    const len = Math.floor(ctx.sampleRate * 0.35);
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d   = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) {
-      d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.08));
-    }
-    const src  = ctx.createBufferSource();
-    const lpf  = ctx.createBiquadFilter();
-    const gain = ctx.createGain();
-    src.buffer = buf;
-    lpf.type = 'lowpass'; lpf.frequency.value = 180;
-    gain.gain.setValueAtTime(2.2, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-    src.connect(lpf); lpf.connect(gain); gain.connect(dest);
-    src.start(t);
-  },
-
-  /** Corner: bright bell ping (partials) */
-  corner(ctx, dest) {
+  /** 위너: clean winner — bright double-ping */
+  winner(ctx, dest) {
     const t = ctx.currentTime;
-    [[1200, 1.0], [2400, 0.4], [3600, 0.15]].forEach(([freq, amp], i) => {
+    [[900, 0], [1350, 0.1]].forEach(([freq, delay]) => {
       const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, t);
-      osc.frequency.exponentialRampToValueAtTime(freq * 0.85, t + 0.6);
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.3 * amp, t + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.75);
+      osc.frequency.setValueAtTime(freq, t + delay);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.75, t + delay + 0.5);
+      gain.gain.setValueAtTime(0, t + delay);
+      gain.gain.linearRampToValueAtTime(0.4, t + delay + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.55);
       osc.connect(gain); gain.connect(dest);
-      osc.start(t); osc.stop(t + 0.8);
+      osc.start(t + delay); osc.stop(t + delay + 0.6);
     });
   },
 
-  /** Penalty: building tension — low sawtooth swell */
-  penalty(ctx, dest) {
+  /** 브레이크포인트: pressure moment — low tension pulse ×3 */
+  breakpoint(ctx, dest) {
     const t = ctx.currentTime;
-    [80, 120, 160].forEach(freq => {
+    [0, 0.22, 0.44].forEach(delay => {
       const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sawtooth';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.18, t + 0.4);
-      gain.gain.setValueAtTime(0.18, t + 0.65);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+      osc.frequency.value = 100 + delay * 40;
+      gain.gain.setValueAtTime(0, t + delay);
+      gain.gain.linearRampToValueAtTime(0.25, t + delay + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.18);
       osc.connect(gain); gain.connect(dest);
-      osc.start(t); osc.stop(t + 1.0);
+      osc.start(t + delay); osc.stop(t + delay + 0.2);
     });
   },
 
-  /** Substitution: two-tone center chime (no spatial pan needed) */
-  substitution(ctx, dest) {
+  /** 랠리: long exchange — rhythmic ball-bounce pattern */
+  rally(ctx, dest) {
     const t = ctx.currentTime;
-    [880, 1100].forEach((freq, i) => {
+    // Simulate 4 rapid ball impacts
+    [0, 0.15, 0.3, 0.45].forEach((delay, i) => {
+      const len = Math.floor(ctx.sampleRate * 0.12);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d   = buf.getChannelData(0);
+      for (let j = 0; j < len; j++) {
+        d[j] = (Math.random() * 2 - 1) * Math.exp(-j / (len * 0.06));
+      }
+      const src  = ctx.createBufferSource();
+      const bpf  = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      src.buffer = buf;
+      bpf.type = 'bandpass'; bpf.frequency.value = 800 + i * 100; bpf.Q.value = 2;
+      gain.gain.setValueAtTime(0.6, t + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.12);
+      src.connect(bpf); bpf.connect(gain); gain.connect(dest);
+      src.start(t + delay);
+    });
+  },
+
+  /** 게임/세트: center announcement chime */
+  game(ctx, dest) {
+    const t = ctx.currentTime;
+    [523.25, 783.99, 1046.50].forEach((freq, i) => {
       const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, t + i * 0.14);
-      gain.gain.linearRampToValueAtTime(0.3, t + i * 0.14 + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.14 + 0.35);
+      osc.type = 'sine'; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, t + i * 0.12);
+      gain.gain.linearRampToValueAtTime(0.3, t + i * 0.12 + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.12 + 0.5);
       osc.connect(gain); gain.connect(dest);
-      osc.start(t + i * 0.14); osc.stop(t + i * 0.14 + 0.4);
+      osc.start(t + i * 0.12); osc.stop(t + i * 0.12 + 0.55);
     });
   },
 };
 
 export const EARCON_META = {
-  goal:         { label: '골',       icon: '⚽', color: '#ffd700', desc: '상승 화음 (4음 아르페지오)' },
-  foul:         { label: '파울',     icon: '🟨', color: '#ff6b6b', desc: '날카로운 호루라기 burst' },
-  tackle:       { label: '태클',     icon: '💥', color: '#ff8c42', desc: '저음 충격 (lowpass noise)' },
-  corner:       { label: '코너킥',   icon: '🚩', color: '#4fc3f7', desc: '밝은 종소리 (배음 3개)' },
-  penalty:      { label: '페널티',   icon: '🎯', color: '#ce93d8', desc: '긴장 드론 (저음 사인 swell)' },
-  substitution: { label: '교체',     icon: '🔄', color: '#a5d6a7', desc: '중앙 2음 알림 (공간 패닝 없음)' },
+  ace:        { label: '에이스',       icon: '🎯', color: '#ffd700', desc: '날카로운 상승음 + 핑' },
+  fault:      { label: '폴트',         icon: '🔴', color: '#ff6b6b', desc: '하강 둔탁음' },
+  winner:     { label: '위너',         icon: '⚡', color: '#4fc3f7', desc: '밝은 이중 핑' },
+  breakpoint: { label: '브레이크포인트', icon: '🎯', color: '#ce93d8', desc: '저음 긴장 펄스 ×3' },
+  rally:      { label: '랠리',         icon: '🏃', color: '#ff8c42', desc: '연속 볼 바운스 패턴' },
+  game:       { label: '게임/세트',     icon: '🏆', color: '#a5d6a7', desc: '중앙 3음 알림' },
 };

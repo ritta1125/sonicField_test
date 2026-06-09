@@ -91,12 +91,12 @@
     }
     .error-banner.visible { display: block; }
 
-    /* Pitch */
+    /* Court */
     .pitch-container { position: relative; }
     .pitch-label-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; padding: 0 4px; }
     .pitch-grid {
-      display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(3, 1fr);
-      gap: 3px; aspect-ratio: 5/3; background: #1a2e1a; border: 2px solid #2d4a2d;
+      display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+      gap: 3px; aspect-ratio: 3/4; background: #0d1f0d; border: 2px solid #1a3a1a;
       border-radius: 8px; padding: 6px; position: relative; overflow: hidden;
     }
     .pitch-cell {
@@ -184,10 +184,10 @@
       background: var(--surface); border-radius: 8px; padding: 10px 14px;
       font-size: 13px; color: var(--muted); margin-bottom: 14px;
     }
-    /* Playground pitch — tappable cells */
+    /* Playground court — tappable cells */
     #pg-pitch {
-      display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(3, 1fr);
-      gap: 4px; aspect-ratio: 5/3; background: #1a2e1a; border: 2px solid #2d4a2d;
+      display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+      gap: 4px; aspect-ratio: 3/4; background: #0d1f0d; border: 2px solid #1a3a1a;
       border-radius: 8px; padding: 8px; margin-bottom: 16px;
     }
     .pg-cell {
@@ -326,14 +326,14 @@
       <button class="btn stop-btn" onclick="stopListening()" aria-label="청취 중지">■ 중지</button>
     </div>
 
-    <!-- Pitch grid -->
-    <div class="pitch-container" aria-label="경기장 구역 격자 (5열×3행)" role="img">
-      <div class="pitch-label-row"><span>← 왼쪽</span><span>중앙</span><span>오른쪽 →</span></div>
+    <!-- Court grid -->
+    <div class="pitch-container" aria-label="테니스 코트 구역 격자 (3열×3행)" role="img">
+      <div class="pitch-label-row"><span>왼쪽(듀스)</span><span>센터</span><span>오른쪽(어드)</span></div>
       <div class="pitch-grid" id="pitch-grid">
         <!-- Cells injected by JS -->
         <div id="ball-dot" aria-hidden="true"></div>
       </div>
-      <div class="pitch-label-row" style="margin-top:4px"><span>근거리</span><span></span><span>원거리</span></div>
+      <div class="pitch-label-row" style="margin-top:4px"><span>근거리</span><span>서비스박스</span><span>원거리</span></div>
     </div>
 
     <!-- Earcon toggles -->
@@ -360,10 +360,10 @@
   <div class="progress-bar"><div class="progress-fill" id="ob-progress-fill" style="width:20%"></div></div>
 
   <div class="earcon-card" id="ob-card">
-    <div class="earcon-icon" id="ob-icon">⚽</div>
-    <div class="earcon-card-name" id="ob-name">골</div>
-    <div class="earcon-card-desc" id="ob-desc">경기에서 골이 터졌습니다! 골이 발생한 방향에서 상승하는 화음이 들립니다.</div>
-    <div class="earcon-card-sound" id="ob-sound">🎵 상승 C장조 화음 (4음 아르페지오)</div>
+    <div class="earcon-icon" id="ob-icon">🎯</div>
+    <div class="earcon-card-name" id="ob-name">에이스</div>
+    <div class="earcon-card-desc" id="ob-desc">서버가 에이스를 성공! 상승하는 스윙 소리 뒤에 짧은 핑이 그 방향에서 들립니다.</div>
+    <div class="earcon-card-sound" id="ob-sound">🎵 상승 스윙 (600→1800Hz) + 고음 핑</div>
     <button class="play-sample-btn" id="ob-play-btn" onclick="playOnboardingSample()" aria-label="샘플 재생">▶</button>
     <div style="font-size:12px; color:var(--muted)" id="ob-play-hint">위 버튼을 눌러 소리를 들어보세요</div>
   </div>
@@ -389,7 +389,7 @@
     아래 이어콘을 선택해 각 소리를 경험해보세요.
   </div>
 
-  <div id="pg-pitch" role="grid" aria-label="경기장 격자 (5열×3행). 각 칸을 탭하면 이어콘이 재생됩니다">
+  <div id="pg-pitch" role="grid" aria-label="테니스 코트 격자 (3열×3행). 각 칸을 탭하면 이어콘이 재생됩니다">
     <!-- Injected by JS -->
   </div>
 
@@ -498,8 +498,9 @@ async function initGameSelect() {
   } catch {
     // Server not running — show demo matches
     renderMatches([
-      { match_id: 'demo-1', home: '전북 현대', away: '울산 현대', status: 'live', minute: 34, score: { home: 1, away: 0 }, competition: 'K리그1 (Demo)' },
-      { match_id: 'demo-2', home: 'Manchester City', away: 'Arsenal', status: 'live', minute: 67, score: { home: 2, away: 1 }, competition: 'Premier League (Demo)' },
+      { match_id: 'korea-open-sf',  home: '정현 (Chung Hyeon)',     away: 'Carlos Alcaraz', status: 'live', set_score: '1-0', game_score: '3-2', competition: '코리아오픈 2024 — 준결승 (Demo)' },
+      { match_id: 'korea-open-f',   home: '권순우 (Kwon Soon-woo)', away: 'Novak Djokovic', status: 'live', set_score: '0-1', game_score: '4-4', competition: '코리아오픈 2024 — 결승 (Demo)' },
+      { match_id: 'wimbledon-demo', home: 'Carlos Alcaraz',         away: 'Jannik Sinner',  status: 'live', set_score: '2-1', game_score: '6-5', competition: 'Wimbledon 2024 (Demo)' },
     ]);
   }
 }
@@ -513,15 +514,15 @@ function renderMatches(matches) {
     card.className = 'match-card';
     card.setAttribute('role', 'listitem');
     card.setAttribute('tabindex', '0');
-    card.setAttribute('aria-label', `${m.home} 대 ${m.away}, ${m.score.home}:${m.score.away}, ${m.minute}분`);
+    card.setAttribute('aria-label', `${m.home} 대 ${m.away}, ${m.set_score ?? ''} ${m.competition}`);
     card.innerHTML = `
       <div class="match-card-top">
         <div class="match-teams">${m.home} vs ${m.away}</div>
-        <div class="match-score">${m.score.home} : ${m.score.away}</div>
+        <div class="match-score">${m.set_score ?? '0-0'} <span style="font-size:13px;color:var(--muted)">${m.game_score ?? ''}</span></div>
       </div>
       <div class="match-meta">
         <span class="live-badge">LIVE</span>
-        <span>⏱ ${m.minute}'</span>
+        <span>🎾</span>
         <span>${m.competition}</span>
       </div>
     `;
@@ -550,17 +551,17 @@ function buildPitchGrid() {
   // Remove old cells but keep ball-dot
   Array.from(grid.querySelectorAll('.pitch-cell')).forEach(c => c.remove());
   for (let row = 0; row < 3; row++) {
-    for (let col = 0; col < 5; col++) {
+    for (let col = 0; col < 3; col++) {
       const cell = document.createElement('div');
       cell.className = 'pitch-cell';
       cell.dataset.row = row; cell.dataset.col = col;
-      const colL = ['완전 왼쪽','왼쪽','중앙','오른쪽','완전 오른쪽'][col];
-      const rowL = ['근거리','중간','원거리'][row];
+      const colL = ['왼쪽(듀스)','센터','오른쪽(어드)'][col];
+      const rowL = ['근거리 베이스라인','서비스박스','원거리 베이스라인'][row];
       cell.setAttribute('aria-label', `${rowL} ${colL} 구역`);
       grid.insertBefore(cell, document.getElementById('ball-dot'));
     }
   }
-  moveBall(60, 40);
+  moveBall(50, 50);
 }
 
 function buildEarconToggles() {
@@ -598,13 +599,13 @@ function moveBall(x, y) {
   const pad = 6;
   const dot = document.getElementById('ball-dot');
   if (!dot) return;
-  dot.style.left = (pad + (x / 120) * (rect.width - pad * 2)) + 'px';
-  dot.style.top  = (pad + (y / 80)  * (rect.height - pad * 2)) + 'px';
+  dot.style.left = (pad + (x / 100) * (rect.width - pad * 2)) + 'px';
+  dot.style.top  = (pad + (y / 100) * (rect.height - pad * 2)) + 'px';
   dot.style.display = 'block';
 
   const { col, row } = getGridCell(x, y);
   const cells = document.querySelectorAll('.pitch-cell');
-  const idx = row * 5 + col;
+  const idx = row * 3 + col;
   cells[idx]?.classList.add('flash');
   setTimeout(() => cells[idx]?.classList.remove('flash'), 400);
 }
@@ -622,10 +623,10 @@ async function startListening(match) {
     const ev = e.detail;
     if (ev.type === 'connected') return;
     moveBall(ev.x, ev.y);
-    if (['goal','foul','tackle','corner','penalty'].includes(ev.type)) {
+    if (['ace','fault','winner','breakpoint','rally'].includes(ev.type)) {
       audio.play(ev.type, ev.x, ev.y);
-    } else if (ev.type === 'substitution') {
-      audio.playCenter('substitution');
+    } else if (ev.type === 'game') {
+      audio.playCenter('game');
     }
     logEvent(ev);
   });
@@ -654,9 +655,9 @@ function logEvent(ev) {
   const now  = new Date();
   const mm   = String(now.getMinutes()).padStart(2,'0');
   const ss   = String(now.getSeconds()).padStart(2,'0');
-  const colL  = Math.floor((ev.x/120)*3);
-  const rowL  = Math.floor((ev.y/80)*3);
-  const zone = ['왼쪽','중앙','오른쪽'][Math.min(colL,2)] + ' ' + ['근거리','중간','원거리'][Math.min(rowL,2)];
+  const colL  = Math.min(2, Math.floor((ev.x/100)*3));
+  const rowL  = Math.min(2, Math.floor((ev.y/100)*3));
+  const zone = ['왼쪽(듀스)','센터','오른쪽(어드)'][colL] + ' ' + ['근거리','서비스박스','원거리'][rowL];
 
   const entry = document.createElement('div');
   entry.className = 'event-entry';
@@ -675,11 +676,11 @@ function logEvent(ev) {
 // SCREEN 3 — Onboarding
 // ─────────────────────────────────────────────
 const OB_STEPS = [
-  { type:'goal',    pos:{x:108,y:40}, desc:'경기에서 골이 터졌습니다! 골이 발생한 방향에서 상승하는 화음이 들립니다.' },
-  { type:'foul',    pos:{x:60,y:20},  desc:'파울이 선언되었습니다. 날카로운 호루라기 소리가 파울 위치에서 들립니다.' },
-  { type:'tackle',  pos:{x:40,y:60},  desc:'격렬한 태클! 충격음이 태클 위치에서 들립니다.' },
-  { type:'corner',  pos:{x:120,y:0},  desc:'코너킥입니다. 밝은 종소리가 코너킥 위치에서 들립니다.' },
-  { type:'penalty', pos:{x:108,y:40}, desc:'페널티킥! 긴장감 넘치는 드론 소리가 페널티 스팟에서 들립니다.' },
+  { type:'ace',        pos:{x:20,y:68},  desc:'서버가 에이스 성공! 공이 서비스박스에 꽂히는 위치에서 상승 스윙음 뒤에 핑이 들립니다.' },
+  { type:'fault',      pos:{x:50,y:48},  desc:'폴트! 서브가 네트에 걸렸습니다. 하강하는 둔탁한 음이 그 방향에서 들립니다.' },
+  { type:'winner',     pos:{x:80,y:85},  desc:'위너! 상대방이 받지 못한 강타. 이중 밝은 핑 소리가 공이 착지한 방향에서 들립니다.' },
+  { type:'breakpoint', pos:{x:50,y:50},  desc:'브레이크 포인트! 긴장된 세 번의 낮은 펄스 소리가 중앙에서 울립니다.' },
+  { type:'rally',      pos:{x:35,y:30},  desc:'랠리 진행 중! 연속된 볼 바운스 소리가 현재 위치에서 들립니다.' },
 ];
 let obStep = 0;
 let obPlayed = false;
@@ -739,22 +740,22 @@ window.skipOnboarding = function() {
 // ─────────────────────────────────────────────
 // SCREEN 4 — Playground
 // ─────────────────────────────────────────────
-let pgEarcon = 'goal';
+let pgEarcon = 'ace';
 
 function initPlayground() {
   const pitch = document.getElementById('pg-pitch');
   pitch.innerHTML = '';
   for (let row = 0; row < 3; row++) {
-    for (let col = 0; col < 5; col++) {
+    for (let col = 0; col < 3; col++) {
       const cell = document.createElement('div');
       cell.className = 'pg-cell';
       cell.setAttribute('role', 'gridcell');
-      const colL = ['완전 왼쪽','왼쪽','중앙','오른쪽','완전 오른쪽'][col];
-      const rowL = ['근거리','중간','원거리'][row];
+      const colL = ['왼쪽(듀스)','센터','오른쪽(어드)'][col];
+      const rowL = ['근거리 베이스라인','서비스박스','원거리 베이스라인'][row];
       cell.setAttribute('aria-label', `${rowL} ${colL} 구역에서 ${EARCON_META[pgEarcon]?.label ?? pgEarcon} 재생`);
       cell.setAttribute('tabindex', '0');
-      const sbX = ((col + 0.5) / 5) * 120;
-      const sbY = ((row + 0.5) / 3) * 80;
+      const sbX = ((col + 0.5) / 3) * 100;
+      const sbY = ((row + 0.5) / 3) * 100;
       const fire = async () => {
         await unlockAudioIfNeeded();
         audio.play(pgEarcon, sbX, sbY);
