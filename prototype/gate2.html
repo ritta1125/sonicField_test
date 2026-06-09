@@ -461,7 +461,10 @@ function generateMatch() {
   return events.map(e=>({...e,relSec:e._sec-s0}));
 }
 
-// ═══ COMMENTARY (Web Speech API TTS) ══════════════════════════════
+// ═══ COMMENTARY — real broadcast style ══════════════════════════════
+// Rule: commentators go quiet during play.
+// They speak only at natural breaks — after a point ends, not during.
+// Silence between calls is intentional (like Wimbledon BBC).
 const Commentary = (()=>{
   let on=true, voices=[];
   if('speechSynthesis' in window){
@@ -472,9 +475,10 @@ const Commentary = (()=>{
   function speak(text,delay=0){
     if(!on||!text||!('speechSynthesis' in window)) return;
     setTimeout(()=>{
-      speechSynthesis.cancel();
+      // Don't interrupt an utterance that's still going
+      if(speechSynthesis.speaking) return;
       const u=new SpeechSynthesisUtterance(text);
-      u.lang='ko-KR'; u.rate=1.05; u.pitch=1.1;
+      u.lang='ko-KR'; u.rate=1.0; u.pitch=1.0;  // natural pace, not rushed
       const v=koVoice(); if(v) u.voice=v;
       speechSynthesis.speak(u);
     },delay);
@@ -482,6 +486,34 @@ const Commentary = (()=>{
   function toggle(){ on=!on; speechSynthesis.cancel(); return on; }
   return {speak,toggle,get on(){return on;}};
 })();
+
+// ─── Broadcast timing rules ────────────────────────────────────────
+// How long after the earcon fires before speaking (ms).
+// Earcon durations: ace ~550ms, fault ~250ms, winner ~500ms,
+//   rally ~800ms (4 thwacks), game ~650ms.
+// We wait for the sound to land, THEN speak.
+const COMMENT_DELAY_MS = {
+  ace: 1100, fault: 600, winner: 1000, rally: 1000, breakpoint: 400, game: 700
+};
+// Minimum gap between any two spoken lines — match-clock seconds.
+// At 1× this is 12 real seconds. Keeps the "breathing room" feel.
+const MIN_COMMENT_GAP_SEC = 12;
+
+let _lastCommentSec = -999;
+let _rallyCallCount  = 0;  // speak only every 3rd rally
+
+function _shouldComment(ev){
+  // serve_prep = silence (ball hasn't been struck yet)
+  if(ev._isAI && ev.phase==='serve_prep') return false;
+  // enforce minimum gap between calls
+  if(curSec - _lastCommentSec < MIN_COMMENT_GAP_SEC) return false;
+  // rally: breathe — only 1 in 3 gets a call
+  if(ev.type==='rally'){
+    _rallyCallCount++;
+    if(_rallyCallCount % 3 !== 1) return false;
+  }
+  return true;
+}
 
 function getCommentary(ev, matchMeta={}){
   const col=Math.min(2,Math.floor((ev.y/100)*3)); // landscape col (depth)
@@ -713,6 +745,7 @@ function togglePlay(){
 }
 function reset(){
   clearInterval(iv);playing=false;curSec=0;
+  _lastCommentSec=-999; _rallyCallCount=0;
   document.getElementById('play-btn').textContent='▶ 재생';
   document.getElementById('scrubber').value=0;
   setTime(0); moveBall(50,50);
@@ -737,11 +770,19 @@ function fire(ev){
   else Audio.play(ev.type,ev.x,ev.y);
   logEv(ev);
   if(['ace','winner'].includes(ev.type)) showEval(ev);
-  // 해설: AI 분석 이벤트는 LLM 해설 직접 사용, 아니면 템플릿
-  const line = ev._isAI && ev.commentary
-    ? ev.commentary
-    : getCommentary(ev, currentMatchMeta);
-  Commentary.speak(line, 350);
+
+  // ── Broadcast-style commentary gate ──
+  // game: always announce score (never skip)
+  const isGame = ev.type==='game';
+  if(isGame || _shouldComment(ev)){
+    const line = ev._isAI && ev.commentary
+      ? ev.commentary
+      : getCommentary(ev, currentMatchMeta);
+    // wait for earcon to finish before speaking
+    const delay = COMMENT_DELAY_MS[ev.type] ?? 800;
+    Commentary.speak(line, delay);
+    _lastCommentSec = curSec;
+  }
 }
 
 // ═══ BALL / GRID (landscape TV view) ══════════════════════════════
