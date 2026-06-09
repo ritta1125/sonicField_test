@@ -61,7 +61,7 @@
     /* Ball dot */
     #ball-dot{
       position:absolute;width:12px;height:12px;background:#c8ff00;border-radius:50%;
-      transform:translate(-50%,-50%);transition:left .25s ease,top .25s ease;
+      transform:translate(-50%,-50%);transition:left .08s linear,top .08s linear;
       box-shadow:0 0 8px rgba(200,255,0,0.8);pointer-events:none;z-index:10;display:none;
     }
 
@@ -657,6 +657,27 @@ let shotQ=0, shotC=0;
 let currentMatchMeta={};
 let matchDuration=600; // updated per-match
 
+// Ball track — sorted array of {t, x, y} for real-time movement
+// null = no track (use event-triggered jumps instead)
+let ballTrack=null;
+let ballTrackIdx=0; // last-used index (for O(1) forward scan)
+
+function resetBallTrack(){ ballTrackIdx=0; }
+
+function getBallPos(tSec){
+  if(!ballTrack||ballTrack.length===0) return null;
+  // advance index while next sample is still before tSec
+  while(ballTrackIdx < ballTrack.length-1 && ballTrack[ballTrackIdx+1].t <= tSec){
+    ballTrackIdx++;
+  }
+  // interpolate between ballTrackIdx and ballTrackIdx+1
+  const a=ballTrack[ballTrackIdx];
+  const b=ballTrack[Math.min(ballTrackIdx+1, ballTrack.length-1)];
+  if(b.t===a.t) return {x:a.x, y:a.y};
+  const frac=Math.max(0,Math.min(1,(tSec-a.t)/(b.t-a.t)));
+  return { x:a.x+(b.x-a.x)*frac, y:a.y+(b.y-a.y)*frac };
+}
+
 function setDuration(sec){
   matchDuration=sec;
   document.getElementById('scrubber').max=Math.ceil(sec);
@@ -672,9 +693,12 @@ function loadData(){
 
   // ── AI-analysed bundle from ai_commentary-master ──
   if(sel==='iyerin-v22'){
-    fetch('bridge_iyerin_v22.json')
-      .then(r=>{ if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(bundle=>{
+    Promise.all([
+      fetch('bridge_iyerin_v22.json').then(r=>{ if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
+      fetch('ball_tracks_iyerin_v22.json').then(r=>r.json()).catch(()=>null)
+    ]).then(([bundle, tracks])=>{
+      ballTrack = tracks; // null if file missing — falls back to event jumps
+      resetBallTrack();
         // Map bundle events → SonicField event format
         matchEvents = bundle.events
           .filter(e=>e.trust==='speech_ready')  // governance gate: only verified events
@@ -698,14 +722,16 @@ function loadData(){
         document.getElementById('audio-unlock').classList.add('show');
         setMsg(`✅ AI 분석 데이터 로드 완료 — ${matchEvents.length}개 이벤트 (speech-ready)`);
       })
-      .catch(err=>{
-        setMsg(`❌ bridge_iyerin_v22.json 로드 실패: ${err.message}`);
+    }).catch(err=>{
+        ballTrack=null;
+        setMsg(`❌ AI 데이터 로드 실패: ${err.message}`);
         console.error(err);
       });
     return; // async — rest handled in .then()
   }
 
   // ── Stat-simulated / real matches ──
+  ballTrack=null; resetBallTrack();
   setDuration(600);
   if(sel==='sim'||!REAL_MATCHES[sel]){
     matchEvents=generateMatch();
@@ -746,6 +772,7 @@ function togglePlay(){
 function reset(){
   clearInterval(iv);playing=false;curSec=0;
   _lastCommentSec=-999; _rallyCallCount=0;
+  resetBallTrack();
   document.getElementById('play-btn').textContent='▶ 재생';
   document.getElementById('scrubber').value=0;
   setTime(0); moveBall(50,50);
@@ -758,6 +785,9 @@ function tick(){
   curSec+=0.1*speed;
   document.getElementById('scrubber').value=Math.floor(curSec);
   setTime(curSec);
+  // real-time ball movement from track (if available)
+  const pos=getBallPos(curSec);
+  if(pos) moveBall(pos.x, pos.y);
   const sf=Math.floor(curSec);
   if(sf!==lastSec){
     lastSec=sf;
