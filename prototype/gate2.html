@@ -502,7 +502,7 @@ function moveBall(x,y){
 // ═══ ZONE LABEL ════════════════════════════════
 function zone(x,y){
   const c=Math.min(2,Math.floor((x/100)*3)),r=Math.min(2,Math.floor((y/100)*3));
-  return ['왼쪽(듀스)','센터','오른쪽(어드)'][c]+' '+'['+'근거리','서비스박스','원거리'][r];
+  return ['왼쪽(듀스)','센터','오른쪽(어드)'][c]+' '+['근거리','서비스박스','원거리'][r];
 }
 function third(x){return x<33?'left':x<67?'center':'right';}
 
