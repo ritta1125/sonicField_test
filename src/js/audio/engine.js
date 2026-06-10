@@ -97,61 +97,61 @@ export class AudioEngine {
 // Ball impact helper — acoustic "탁" (snare-like thwack)
 // vel: 0.5 (soft) → 1.0 (hard smash)
 // ─────────────────────────────────────────────
-// 4-layer realistic racket impact:
-//   Layer 1: String snap    — HPF 5kHz,  6ms  (스트링 면에 닿는 순간)
-//   Layer 2: Ball thump     — sine 320→85Hz, 40ms  (공 압축·반발)
-//   Layer 3: String twang   — BPF 850Hz Q=9, 80ms  (라켓 스트링 공명)
-//   Layer 4: Mid punch      — BPF 340Hz Q=4, 35ms  (임팩트 살감)
+// "POK" 실제 테니스 타구음 — 4 layer
+//   Layer 1: Contact click  — BPF 1.8kHz Q=1.5, 3ms   (공-스트링 접촉)
+//   Layer 2: Ball POK body  — sine 500→180Hz, 22ms     (고무공 핵심 POK)
+//   Layer 3: String res.    — BPF 680Hz Q=5,  55ms     (자연스러운 울림)
+//   Layer 4: Low weight     — BPF 210Hz Q=2.5, 40ms   (질량감)
 function _ballHit(ctx, dest, t, vel = 1.0) {
   const sr = ctx.sampleRate;
 
-  // 1. String snap — 초단발 HPF 노이즈 (스트링 탄성 순간)
-  const sLen = Math.floor(sr * 0.006);
-  const sBuf = ctx.createBuffer(1, sLen, sr);
-  const sD   = sBuf.getChannelData(0);
-  for (let i = 0; i < sLen; i++) sD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sLen * 0.12));
-  const snap = ctx.createBufferSource(), sHPF = ctx.createBiquadFilter(), sG = ctx.createGain();
-  snap.buffer = sBuf;
-  sHPF.type = 'highpass'; sHPF.frequency.value = 5000; sHPF.Q.value = 0.7;
-  sG.gain.setValueAtTime(1.5 * vel, t);
-  sG.gain.exponentialRampToValueAtTime(0.001, t + 0.006);
-  snap.connect(sHPF); sHPF.connect(sG); sG.connect(dest); snap.start(t);
+  // 1. Contact click — BPF 1.8kHz, 3ms
+  const cLen = Math.floor(sr * 0.003);
+  const cBuf = ctx.createBuffer(1, cLen, sr);
+  const cD   = cBuf.getChannelData(0);
+  for (let i = 0; i < cLen; i++) cD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (cLen * 0.15));
+  const click = ctx.createBufferSource(), ckBPF = ctx.createBiquadFilter(), ckG = ctx.createGain();
+  click.buffer = cBuf;
+  ckBPF.type = 'bandpass'; ckBPF.frequency.value = 1800; ckBPF.Q.value = 1.5;
+  ckG.gain.setValueAtTime(1.6 * vel, t);
+  ckG.gain.exponentialRampToValueAtTime(0.001, t + 0.003);
+  click.connect(ckBPF); ckBPF.connect(ckG); ckG.connect(dest); click.start(t);
 
-  // 2. Ball compression thump — 피치 드롭 320→85 Hz
-  const thump = ctx.createOscillator(), tG = ctx.createGain();
-  thump.type = 'sine';
-  thump.frequency.setValueAtTime(320, t);
-  thump.frequency.exponentialRampToValueAtTime(85, t + 0.04);
-  tG.gain.setValueAtTime(0, t);
-  tG.gain.linearRampToValueAtTime(0.72 * vel, t + 0.002);
-  tG.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
-  thump.connect(tG); tG.connect(dest); thump.start(t); thump.stop(t + 0.06);
+  // 2. Ball POK body — sine 500→180Hz, 22ms
+  const body = ctx.createOscillator(), bG = ctx.createGain();
+  body.type = 'sine';
+  body.frequency.setValueAtTime(500, t);
+  body.frequency.exponentialRampToValueAtTime(180, t + 0.022);
+  bG.gain.setValueAtTime(0, t);
+  bG.gain.linearRampToValueAtTime(0.9 * vel, t + 0.001);
+  bG.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+  body.connect(bG); bG.connect(dest); body.start(t); body.stop(t + 0.045);
 
-  // 3. String resonance twang — BPF 850Hz Q=9 (라켓 고유 음색)
-  const twLen = Math.floor(sr * 0.08);
+  // 3. String resonance — BPF 680Hz Q=5, 55ms
+  const twLen = Math.floor(sr * 0.055);
   const twBuf = ctx.createBuffer(1, twLen, sr);
   const twD   = twBuf.getChannelData(0);
-  for (let i = 0; i < twLen; i++) twD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (twLen * 0.18));
-  const twang = ctx.createBufferSource(), twBPF = ctx.createBiquadFilter(), twG = ctx.createGain();
-  twang.buffer = twBuf;
-  twBPF.type = 'bandpass'; twBPF.frequency.value = 850; twBPF.Q.value = 9;
+  for (let i = 0; i < twLen; i++) twD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (twLen * 0.22));
+  const tw = ctx.createBufferSource(), twBPF = ctx.createBiquadFilter(), twG = ctx.createGain();
+  tw.buffer = twBuf;
+  twBPF.type = 'bandpass'; twBPF.frequency.value = 680; twBPF.Q.value = 5;
   twG.gain.setValueAtTime(0, t);
-  twG.gain.linearRampToValueAtTime(0.42 * vel, t + 0.001);
-  twG.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-  twang.connect(twBPF); twBPF.connect(twG); twG.connect(dest); twang.start(t);
+  twG.gain.linearRampToValueAtTime(0.38 * vel, t + 0.001);
+  twG.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+  tw.connect(twBPF); twBPF.connect(twG); twG.connect(dest); tw.start(t);
 
-  // 4. Mid punch — BPF 340Hz Q=4 (임팩트 질감)
-  const mpLen = Math.floor(sr * 0.035);
-  const mpBuf = ctx.createBuffer(1, mpLen, sr);
-  const mpD   = mpBuf.getChannelData(0);
-  for (let i = 0; i < mpLen; i++) mpD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (mpLen * 0.28));
-  const mp = ctx.createBufferSource(), mpBPF = ctx.createBiquadFilter(), mpG = ctx.createGain();
-  mp.buffer = mpBuf;
-  mpBPF.type = 'bandpass'; mpBPF.frequency.value = 340; mpBPF.Q.value = 4;
-  mpG.gain.setValueAtTime(0, t);
-  mpG.gain.linearRampToValueAtTime(0.52 * vel, t + 0.002);
-  mpG.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
-  mp.connect(mpBPF); mpBPF.connect(mpG); mpG.connect(dest); mp.start(t);
+  // 4. Low weight — BPF 210Hz Q=2.5, 40ms
+  const lwLen = Math.floor(sr * 0.04);
+  const lwBuf = ctx.createBuffer(1, lwLen, sr);
+  const lwD   = lwBuf.getChannelData(0);
+  for (let i = 0; i < lwLen; i++) lwD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (lwLen * 0.3));
+  const lw = ctx.createBufferSource(), lwBPF = ctx.createBiquadFilter(), lwG = ctx.createGain();
+  lw.buffer = lwBuf;
+  lwBPF.type = 'bandpass'; lwBPF.frequency.value = 210; lwBPF.Q.value = 2.5;
+  lwG.gain.setValueAtTime(0, t);
+  lwG.gain.linearRampToValueAtTime(0.55 * vel, t + 0.002);
+  lwG.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+  lw.connect(lwBPF); lwBPF.connect(lwG); lwG.connect(dest); lw.start(t);
 }
 
 // ─────────────────────────────────────────────
