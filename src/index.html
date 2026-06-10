@@ -185,10 +185,14 @@
       font-size: 13px; color: var(--muted); margin-bottom: 14px;
     }
     /* Playground court — tappable cells */
+    .pg-axis-labels { display: flex; align-items: center; margin-bottom: 2px; }
+    .pg-col-labels { display: flex; justify-content: space-around; flex: 1; font-size: 10px; color: var(--muted); }
+    .pg-grid-wrap { display: flex; gap: 4px; margin-bottom: 16px; }
+    .pg-row-labels { display: flex; flex-direction: column; justify-content: space-around; font-size: 10px; color: var(--muted); padding: 8px 4px 8px 0; min-width: 28px; text-align: right; }
     #pg-pitch {
       display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
-      gap: 4px; aspect-ratio: 4/3; background: #0d1f0d; border: 2px solid #1a3a1a;
-      border-radius: 8px; padding: 8px; margin-bottom: 16px;
+      gap: 4px; aspect-ratio: 4/3; flex: 1; background: #0d1f0d; border: 2px solid #1a3a1a;
+      border-radius: 8px; padding: 8px;
     }
     .pg-cell {
       background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
@@ -196,9 +200,10 @@
       display: flex; align-items: center; justify-content: center; font-size: 10px;
       color: transparent;
     }
-    .pg-cell:hover { background: rgba(79,255,176,0.12); border-color: var(--accent); color: var(--muted); }
+    .pg-cell:hover { background: rgba(79,255,176,0.12); border-color: var(--accent); }
     .pg-cell:focus { outline: 2px solid var(--accent); }
     .pg-cell.active { background: rgba(79,255,176,0.25); border-color: var(--accent); }
+    .pg-dir-label { font-size: 9px; color: rgba(255,255,255,0.22); pointer-events: none; user-select: none; }
 
     /* Earcon selector */
     .earcon-selector { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
@@ -391,8 +396,15 @@
     아래 이어콘을 선택해 각 소리를 경험해보세요.
   </div>
 
-  <div id="pg-pitch" role="grid" aria-label="테니스 코트 격자 (3열×3행). 각 칸을 탭하면 이어콘이 재생됩니다">
-    <!-- Injected by JS -->
+  <div class="pg-axis-labels">
+    <span class="pg-ax-side" style="visibility:hidden">뒤</span>
+    <div class="pg-col-labels"><span>왼쪽</span><span>중앙</span><span>오른쪽</span></div>
+  </div>
+  <div class="pg-grid-wrap">
+    <div class="pg-row-labels"><span>앞</span><span>중간</span><span>뒤</span></div>
+    <div id="pg-pitch" role="grid" aria-label="테니스 코트 격자 (3행×3열). 위=앞, 아래=뒤, 왼=왼쪽, 오른=오른쪽">
+      <!-- Injected by JS -->
+    </div>
   </div>
 
   <div style="font-size:12px; color:var(--muted); text-align:center; margin-bottom:12px">이어콘 선택</div>
@@ -754,13 +766,22 @@ function initPlayground() {
       const cell = document.createElement('div');
       cell.className = 'pg-cell';
       cell.setAttribute('role', 'gridcell');
-      // landscape: row=x(deuce→ad), col=y(near→far)
-      const colL = ['근거리','서비스박스','원거리'][col];
-      const rowL = ['듀스','센터','어드'][row];
+      // row = 앞→중간→뒤 (y: near→far = depth)
+      // col = 왼→중앙→오른 (x: deuce→ad = left/right)
+      const colL = ['왼쪽','중앙','오른쪽'][col];
+      const rowL = ['앞','중간','뒤'][row];
       cell.setAttribute('aria-label', `${rowL} ${colL} 구역에서 ${EARCON_META[pgEarcon]?.label ?? pgEarcon} 재생`);
       cell.setAttribute('tabindex', '0');
-      const sbX = ((row + 0.5) / 3) * 100; // row → x coordinate
-      const sbY = ((col + 0.5) / 3) * 100; // col → y coordinate
+      // 셀 내 방향 힌트 텍스트 (가장자리만)
+      const hints = [[`↖앞왼`,'앞',`앞오른↗`],['왼','','오른'],[`↙뒤왼`,'뒤',`뒤오른↘`]];
+      if(hints[row][col]) {
+        const lbl = document.createElement('span');
+        lbl.className = 'pg-dir-label';
+        lbl.textContent = hints[row][col];
+        cell.appendChild(lbl);
+      }
+      const sbX = ((col + 0.5) / 3) * 100; // col → x (왼→오른)
+      const sbY = ((row + 0.5) / 3) * 100; // row → y (앞→뒤)
       const fire = async () => {
         await unlockAudioIfNeeded();
         audio.play(pgEarcon, sbX, sbY);
