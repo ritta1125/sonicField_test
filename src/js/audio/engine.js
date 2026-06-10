@@ -97,56 +97,61 @@ export class AudioEngine {
 // Ball impact helper — acoustic "탁" (snare-like thwack)
 // vel: 0.5 (soft) → 1.0 (hard smash)
 // ─────────────────────────────────────────────
+// 4-layer realistic racket impact:
+//   Layer 1: String snap    — HPF 5kHz,  6ms  (스트링 면에 닿는 순간)
+//   Layer 2: Ball thump     — sine 320→85Hz, 40ms  (공 압축·반발)
+//   Layer 3: String twang   — BPF 850Hz Q=9, 80ms  (라켓 스트링 공명)
+//   Layer 4: Mid punch      — BPF 340Hz Q=4, 35ms  (임팩트 살감)
 function _ballHit(ctx, dest, t, vel = 1.0) {
   const sr = ctx.sampleRate;
 
-  // 1. Crack transient — high-freq noise through HPF (strings snapping on impact)
-  const crackLen = Math.floor(sr * 0.028);
-  const crackBuf = ctx.createBuffer(1, crackLen, sr);
-  const crackData = crackBuf.getChannelData(0);
-  for (let i = 0; i < crackLen; i++) {
-    crackData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (crackLen * 0.07));
-  }
-  const crack     = ctx.createBufferSource();
-  const hpf       = ctx.createBiquadFilter();
-  const crackGain = ctx.createGain();
-  crack.buffer = crackBuf;
-  hpf.type = 'highpass'; hpf.frequency.value = 3500; hpf.Q.value = 0.6;
-  crackGain.gain.setValueAtTime(0, t);
-  crackGain.gain.linearRampToValueAtTime(1.0 * vel, t + 0.001);
-  crackGain.gain.exponentialRampToValueAtTime(0.001, t + 0.028);
-  crack.connect(hpf); hpf.connect(crackGain); crackGain.connect(dest);
-  crack.start(t);
+  // 1. String snap — 초단발 HPF 노이즈 (스트링 탄성 순간)
+  const sLen = Math.floor(sr * 0.006);
+  const sBuf = ctx.createBuffer(1, sLen, sr);
+  const sD   = sBuf.getChannelData(0);
+  for (let i = 0; i < sLen; i++) sD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sLen * 0.12));
+  const snap = ctx.createBufferSource(), sHPF = ctx.createBiquadFilter(), sG = ctx.createGain();
+  snap.buffer = sBuf;
+  sHPF.type = 'highpass'; sHPF.frequency.value = 5000; sHPF.Q.value = 0.7;
+  sG.gain.setValueAtTime(1.5 * vel, t);
+  sG.gain.exponentialRampToValueAtTime(0.001, t + 0.006);
+  snap.connect(sHPF); sHPF.connect(sG); sG.connect(dest); snap.start(t);
 
-  // 2. Body thump — pitched sine drop (220→50 Hz) — the hollow ball compression
-  const thump     = ctx.createOscillator();
-  const thumpGain = ctx.createGain();
+  // 2. Ball compression thump — 피치 드롭 320→85 Hz
+  const thump = ctx.createOscillator(), tG = ctx.createGain();
   thump.type = 'sine';
-  thump.frequency.setValueAtTime(220, t);
-  thump.frequency.exponentialRampToValueAtTime(50, t + 0.045);
-  thumpGain.gain.setValueAtTime(0, t);
-  thumpGain.gain.linearRampToValueAtTime(0.7 * vel, t + 0.001);
-  thumpGain.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
-  thump.connect(thumpGain); thumpGain.connect(dest);
-  thump.start(t); thump.stop(t + 0.06);
+  thump.frequency.setValueAtTime(320, t);
+  thump.frequency.exponentialRampToValueAtTime(85, t + 0.04);
+  tG.gain.setValueAtTime(0, t);
+  tG.gain.linearRampToValueAtTime(0.72 * vel, t + 0.002);
+  tG.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+  thump.connect(tG); tG.connect(dest); thump.start(t); thump.stop(t + 0.06);
 
-  // 3. Mid ring — bandpass noise 500-700 Hz (court surface resonance)
-  const ringLen  = Math.floor(sr * 0.07);
-  const ringBuf  = ctx.createBuffer(1, ringLen, sr);
-  const ringData = ringBuf.getChannelData(0);
-  for (let i = 0; i < ringLen; i++) {
-    ringData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ringLen * 0.22));
-  }
-  const ring     = ctx.createBufferSource();
-  const bpf      = ctx.createBiquadFilter();
-  const ringGain = ctx.createGain();
-  ring.buffer = ringBuf;
-  bpf.type = 'bandpass'; bpf.frequency.value = 580; bpf.Q.value = 3.5;
-  ringGain.gain.setValueAtTime(0, t);
-  ringGain.gain.linearRampToValueAtTime(0.45 * vel, t + 0.002);
-  ringGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
-  ring.connect(bpf); bpf.connect(ringGain); ringGain.connect(dest);
-  ring.start(t);
+  // 3. String resonance twang — BPF 850Hz Q=9 (라켓 고유 음색)
+  const twLen = Math.floor(sr * 0.08);
+  const twBuf = ctx.createBuffer(1, twLen, sr);
+  const twD   = twBuf.getChannelData(0);
+  for (let i = 0; i < twLen; i++) twD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (twLen * 0.18));
+  const twang = ctx.createBufferSource(), twBPF = ctx.createBiquadFilter(), twG = ctx.createGain();
+  twang.buffer = twBuf;
+  twBPF.type = 'bandpass'; twBPF.frequency.value = 850; twBPF.Q.value = 9;
+  twG.gain.setValueAtTime(0, t);
+  twG.gain.linearRampToValueAtTime(0.42 * vel, t + 0.001);
+  twG.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+  twang.connect(twBPF); twBPF.connect(twG); twG.connect(dest); twang.start(t);
+
+  // 4. Mid punch — BPF 340Hz Q=4 (임팩트 질감)
+  const mpLen = Math.floor(sr * 0.035);
+  const mpBuf = ctx.createBuffer(1, mpLen, sr);
+  const mpD   = mpBuf.getChannelData(0);
+  for (let i = 0; i < mpLen; i++) mpD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (mpLen * 0.28));
+  const mp = ctx.createBufferSource(), mpBPF = ctx.createBiquadFilter(), mpG = ctx.createGain();
+  mp.buffer = mpBuf;
+  mpBPF.type = 'bandpass'; mpBPF.frequency.value = 340; mpBPF.Q.value = 4;
+  mpG.gain.setValueAtTime(0, t);
+  mpG.gain.linearRampToValueAtTime(0.52 * vel, t + 0.002);
+  mpG.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+  mp.connect(mpBPF); mpBPF.connect(mpG); mpG.connect(dest); mp.start(t);
 }
 
 // ─────────────────────────────────────────────
