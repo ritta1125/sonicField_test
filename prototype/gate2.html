@@ -382,7 +382,132 @@ const Audio = (() => {
     SYNTH[type]?.(ctx,ctx.destination);
   }
   function toggleMute(t){if(muted.has(t)){muted.delete(t);return false;}muted.add(t);return true;}
-  return {init,play,playCenter,toggleMute,isMuted:t=>muted.has(t)};
+  return {init,play,playCenter,toggleMute,isMuted:t=>muted.has(t),getCtx:()=>ctx};
+})();
+
+// ═══ SHOT FLIGHT AUDIO — continuous HRTF whoosh while ball is in air ══
+// 공이 날아가는 동안: filtered noise가 BPF로 "슉" 소리 →
+//   · HRTF panner가 공 위치 추적 (좌우)
+//   · 공 높이에 따라 BPF 주파수 변조 (높을수록 고주파)
+//   · 착지 시 빠른 fadeout → silence
+const ShotAudio = (() => {
+  let _active = null;        // { src, bpf, bpf2, gainNode, panner }
+  let _inFlight = false;
+  let _flightDist = 0;       // 이번 비행에서 이동한 누적 거리
+
+  const FLIGHT_SPD = 12;     // court-units/game-sec 이상 = 비행 중
+  const LAND_SPD   = 5;      // 이하 = 착지
+  const MAX_H      = 30;     // 포물선 최대 높이 (court units 기준)
+  const EXPECTED_D = 62;     // 베이스라인 랠리 기대 이동거리 (arc 계산용)
+
+  // 높이 0~MAX_H → BPF 주파수 160~1150 Hz
+  function _h2f(h) {
+    return 160 + Math.pow(Math.max(0,h)/MAX_H, 0.6) * 990;
+  }
+
+  function _mkPanner(ctx, x, y) {
+    const nx = (x/100)*2-1, nz = (y/100)*2-1;
+    const p = ctx.createPanner();
+    p.panningModel='HRTF'; p.distanceModel='inverse';
+    p.refDistance=1; p.rolloffFactor=0.25; p.coneInnerAngle=360;
+    if(p.positionX){
+      p.positionX.value=nx*10; p.positionY.value=2; p.positionZ.value=nz*12-8;
+    } else { p.setPosition(nx*10,2,nz*12-8); }
+    p.connect(ctx.destination);
+    return p;
+  }
+
+  function _start(ctx, x, y, h) {
+    if(_active) _doStop(ctx, true);
+    const t = ctx.currentTime;
+
+    // 루프용 화이트 노이즈 버퍼
+    const sr = ctx.sampleRate;
+    const buf = ctx.createBuffer(1, sr*3, sr);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+
+    // 두 BPF 직렬: 공명감 있는 whoosh 텍스처
+    const bpf  = ctx.createBiquadFilter();
+    bpf.type='bandpass'; bpf.frequency.value=_h2f(h); bpf.Q.value=5;
+    const bpf2 = ctx.createBiquadFilter();
+    bpf2.type='bandpass'; bpf2.frequency.value=_h2f(h)*1.35; bpf2.Q.value=3;
+
+    const gainNode = ctx.createGain();
+    gainNode.gain.setValueAtTime(0,t);
+    gainNode.gain.linearRampToValueAtTime(0.52, t+0.016); // 16ms attack
+
+    const panner = _mkPanner(ctx, x, y);
+    src.connect(bpf); bpf.connect(bpf2); bpf2.connect(gainNode); gainNode.connect(panner);
+    src.start(t);
+    _active = {src, bpf, bpf2, gainNode, panner};
+  }
+
+  function _update(ctx, x, y, h) {
+    if(!_active) return;
+    const t = ctx.currentTime;
+    const nx=(x/100)*2-1, nz=(y/100)*2-1;
+    if(_active.panner.positionX){
+      _active.panner.positionX.setTargetAtTime(nx*10,   t, 0.04);
+      _active.panner.positionZ.setTargetAtTime(nz*12-8, t, 0.04);
+    }
+    const f=_h2f(h);
+    _active.bpf.frequency.setTargetAtTime(f,       t, 0.04);
+    _active.bpf2.frequency.setTargetAtTime(f*1.35, t, 0.04);
+  }
+
+  function _doStop(ctx, immediate) {
+    if(!_active) return;
+    const t = ctx.currentTime;
+    const node = _active; _active = null;
+    node.gainNode.gain.cancelScheduledValues(t);
+    if(immediate){
+      node.gainNode.gain.setValueAtTime(0,t);
+    } else {
+      // 착지: 30ms 급속 fadeout (탁 끊기는 느낌)
+      node.gainNode.gain.setTargetAtTime(0, t, 0.03);
+    }
+    setTimeout(()=>{ try{ node.src.stop(); node.panner.disconnect(); }catch(_){} }, 250);
+  }
+
+  // prevPos, pos: {x,y}   spd: game speed multiplier (default 1)
+  function tick(prevPos, pos, spd) {
+    const ctx = Audio.getCtx();
+    if(!ctx || !pos || !prevPos) return;
+    spd = spd||1;
+
+    const dx=pos.x-prevPos.x, dy=pos.y-prevPos.y;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    const gameSpd = dist / (0.1*spd); // court-units per game-second
+
+    if(gameSpd > FLIGHT_SPD) {
+      if(!_inFlight){ _inFlight=true; _flightDist=0; }
+      _flightDist += dist;
+
+      // 포물선 높이: sin(π * progress) * MAX_H
+      const progress = Math.min(_flightDist/EXPECTED_D, 1.0);
+      const height = Math.sin(Math.PI*progress) * MAX_H;
+
+      if(_active) _update(ctx, pos.x, pos.y, height);
+      else        _start(ctx, pos.x, pos.y, height);
+    } else {
+      if(_inFlight){
+        _inFlight=false; _flightDist=0;
+        _doStop(ctx, false); // 착지 fadeout
+      }
+    }
+  }
+
+  function stop() {
+    const ctx=Audio.getCtx();
+    if(ctx) _doStop(ctx, true);
+    _inFlight=false; _flightDist=0;
+  }
+
+  return {tick, stop};
 })();
 
 // ═══ BALL HIT HELPER — acoustic "탁" (snare-like thwack) ══════════
@@ -736,6 +861,7 @@ let matchDuration=600; // updated per-match
 // null = no track (use event-triggered jumps instead)
 let ballTrack=null;
 let ballTrackIdx=0; // last-used index (for O(1) forward scan)
+let _prevBallPos=null; // for ShotAudio velocity detection
 
 function resetBallTrack(){ ballTrackIdx=0; }
 
@@ -956,6 +1082,7 @@ function toggleCommentary(){
 function togglePlay(){
   if(playing){
     clearInterval(iv); playing=false;
+    ShotAudio.stop(); _prevBallPos=null;
     document.getElementById('play-btn').textContent='▶ 재생';
   } else {
     playing=true;
@@ -966,13 +1093,13 @@ function togglePlay(){
 function reset(){
   clearInterval(iv);playing=false;curSec=0;
   _lastCommentSec=-999; _rallyCallCount=0;
-  resetBallTrack();
+  resetBallTrack(); ShotAudio.stop(); _prevBallPos=null;
   document.getElementById('play-btn').textContent='▶ 재생';
   document.getElementById('scrubber').value=0;
   setTime(0); moveBall(50,50);
   document.getElementById('event-log').innerHTML='<div style="font-size:12px;color:var(--muted)">재생을 시작하면 이벤트가 표시됩니다.</div>';
 }
-function onScrub(v){curSec=Number(v);setTime(curSec);}
+function onScrub(v){curSec=Number(v);setTime(curSec);ShotAudio.stop();_prevBallPos=null;}
 let lastSec=-1;
 function tick(){
   if(curSec>=matchDuration){clearInterval(iv);playing=false;document.getElementById('play-btn').textContent='▶ 재생';return;}
@@ -981,7 +1108,11 @@ function tick(){
   setTime(curSec);
   // real-time ball movement from track (if available)
   const pos=getBallPos(curSec);
-  if(pos) moveBall(pos.x, pos.y);
+  if(pos){
+    moveBall(pos.x, pos.y);
+    ShotAudio.tick(_prevBallPos, pos, speed); // continuous flight sound
+    _prevBallPos=pos;
+  }
   const sf=Math.floor(curSec);
   if(sf!==lastSec){
     lastSec=sf;
