@@ -176,8 +176,83 @@
       <option value="sim">🎲 시뮬레이션</option>
     </select>
     <button class="btn-g" id="commentary-btn" onclick="toggleCommentary()" style="font-size:11px;padding:5px 10px;">🔊 해설 ON</button>
+    <button class="btn-g" onclick="openAnalyzer()" style="font-size:11px;padding:5px 10px;background:var(--surface2);border:1px solid var(--border);">📹 영상 분석</button>
   </div>
 </header>
+
+<!-- ── Video Analyzer Modal ──────────────────────────────────── -->
+<div id="analyzer-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;width:520px;max-width:95vw;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;color:var(--accent);">📹 경기 영상 분석</div>
+      <button onclick="closeAnalyzer()" style="background:none;color:var(--muted);font-size:18px;padding:2px 6px;">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6;">
+      YouTube URL을 입력하면 볼 트래킹 → 공간음 변환합니다.<br>
+      기존 해설 음성 위에 HRTF 이어콘이 오버레이됩니다.
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">YouTube URL *</label>
+        <input id="az-url" type="url" placeholder="https://www.youtube.com/watch?v=..."
+          style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">홈 선수</label>
+          <input id="az-home" type="text" placeholder="Federer"
+            style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">어웨이 선수</label>
+          <input id="az-away" type="text" placeholder="Nadal"
+            style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">대회명</label>
+          <input id="az-comp" type="text" placeholder="Wimbledon 2008 Final"
+            style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">날짜</label>
+          <input id="az-date" type="text" placeholder="2008-07-06"
+            style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div id="az-progress" style="display:none;margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;">
+        <span id="az-status-msg" style="color:var(--text);">분석 중...</span>
+        <span id="az-pct" style="color:var(--accent);font-weight:700;">0%</span>
+      </div>
+      <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;">
+        <div id="az-bar" style="height:100%;background:var(--accent);width:0%;transition:width .4s ease;border-radius:3px;"></div>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="az-error" style="display:none;margin-top:12px;padding:10px;background:#2a1010;border:1px solid var(--warn);border-radius:6px;font-size:12px;color:var(--warn);"></div>
+
+    <div style="display:flex;gap:8px;margin-top:20px;">
+      <button id="az-submit-btn" onclick="submitAnalysis()"
+        style="flex:1;padding:10px;background:var(--accent);color:#000;font-weight:700;border-radius:6px;font-size:14px;">
+        🎾 분석 시작
+      </button>
+      <button onclick="closeAnalyzer()"
+        style="padding:10px 16px;background:var(--surface2);color:var(--muted);border-radius:6px;">
+        취소
+      </button>
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:var(--muted);">
+      ⚠️ tracker_server.py가 실행 중이어야 합니다: <code style="color:var(--accent);">python3 prototype/tracker_server.py</code>
+    </div>
+  </div>
+</div>
 
 <main>
   <!-- LEFT -->
@@ -678,6 +753,126 @@ function getBallPos(tSec){
   return { x:a.x+(b.x-a.x)*frac, y:a.y+(b.y-a.y)*frac };
 }
 
+// ═══ VIDEO ANALYZER ═════════════════════════════════════════════════
+const TRACKER_URL = 'http://localhost:5175';
+let _azJobId = null, _azPollTimer = null;
+
+function openAnalyzer(){
+  document.getElementById('analyzer-modal').style.display='flex';
+  document.getElementById('az-progress').style.display='none';
+  document.getElementById('az-error').style.display='none';
+  document.getElementById('az-submit-btn').disabled=false;
+  document.getElementById('az-submit-btn').textContent='🎾 분석 시작';
+}
+function closeAnalyzer(){
+  document.getElementById('analyzer-modal').style.display='none';
+  if(_azPollTimer){ clearInterval(_azPollTimer); _azPollTimer=null; }
+}
+
+async function submitAnalysis(){
+  const url  = document.getElementById('az-url').value.trim();
+  const home = document.getElementById('az-home').value.trim() || '홈';
+  const away = document.getElementById('az-away').value.trim() || '어웨이';
+  const comp = document.getElementById('az-comp').value.trim();
+  const date = document.getElementById('az-date').value.trim();
+
+  if(!url){ alert('YouTube URL을 입력하세요.'); return; }
+
+  // Check tracker server is up
+  try {
+    const health = await fetch(`${TRACKER_URL}/health`, {signal: AbortSignal.timeout(2000)});
+    if(!health.ok) throw new Error();
+  } catch(_){
+    _azShowError('tracker_server.py가 실행되지 않았습니다.\n터미널에서: python3 prototype/tracker_server.py');
+    return;
+  }
+
+  document.getElementById('az-submit-btn').disabled=true;
+  document.getElementById('az-progress').style.display='block';
+  document.getElementById('az-error').style.display='none';
+  _azSetProgress(5, '분석 요청 전송 중...');
+
+  try {
+    const res = await fetch(`${TRACKER_URL}/analyze`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url, home, away, competition:comp, date})
+    });
+    const data = await res.json();
+    if(!res.ok || !data.job_id){ throw new Error(data.error || '요청 실패'); }
+    _azJobId = data.job_id;
+    _azPollTimer = setInterval(_azPoll, 1500);
+  } catch(e){
+    _azShowError(`분석 요청 실패: ${e.message}`);
+    document.getElementById('az-submit-btn').disabled=false;
+  }
+}
+
+async function _azPoll(){
+  if(!_azJobId) return;
+  try {
+    const res = await fetch(`${TRACKER_URL}/status/${_azJobId}`);
+    const d = await res.json();
+    _azSetProgress(d.progress, d.message);
+    if(d.status==='done'){
+      clearInterval(_azPollTimer); _azPollTimer=null;
+      _azSetProgress(100, '✅ 완료! 플레이어에 로딩 중...');
+      await _azLoadResult(_azJobId, d.meta);
+    } else if(d.status==='error'){
+      clearInterval(_azPollTimer); _azPollTimer=null;
+      _azShowError(d.error || '알 수 없는 오류');
+      document.getElementById('az-submit-btn').disabled=false;
+    }
+  } catch(e){
+    console.warn('poll error:', e);
+  }
+}
+
+async function _azLoadResult(jobId, meta){
+  try {
+    const res = await fetch(`${TRACKER_URL}/tracks/${jobId}`);
+    const bundle = await res.json();
+
+    // Load into player
+    ballTrack = bundle.ball_positions;
+    resetBallTrack();
+    matchEvents = (bundle.events || []).map(e=>({...e, relSec: e.t}));
+    currentMatchMeta = { home: bundle.home, away: bundle.away };
+    document.getElementById('match-title').textContent=`${bundle.home} vs ${bundle.away}`;
+    document.getElementById('match-meta').textContent=
+      [bundle.competition, bundle.date].filter(Boolean).join(' — ') + ' (볼 트래킹)';
+    setDuration(bundle.duration);
+    buildMarkers();
+    document.getElementById('play-btn').disabled=false;
+    document.getElementById('loading').style.display='none';
+
+    // Add to dropdown
+    const sel = document.getElementById('match-select');
+    const opt = document.createElement('option');
+    opt.value = `tracked-${jobId}`;
+    opt.textContent = `📹 ${bundle.home} vs ${bundle.away}${bundle.competition?' — '+bundle.competition:''}`;
+    sel.appendChild(opt);
+    sel.value = `tracked-${jobId}`;
+
+    setTimeout(closeAnalyzer, 1200);
+    setMsg(`📹 볼 트래킹 로드 완료 — ${ballTrack.length}개 위치, ${matchEvents.length}개 이벤트`);
+  } catch(e){
+    _azShowError(`결과 로드 실패: ${e.message}`);
+  }
+}
+
+function _azSetProgress(pct, msg){
+  document.getElementById('az-pct').textContent=pct+'%';
+  document.getElementById('az-status-msg').textContent=msg;
+  document.getElementById('az-bar').style.width=pct+'%';
+}
+function _azShowError(msg){
+  const el=document.getElementById('az-error');
+  el.style.display='block';
+  el.textContent=msg;
+  _azSetProgress(0,'오류 발생');
+}
+
 function setDuration(sec){
   matchDuration=sec;
   document.getElementById('scrubber').max=Math.ceil(sec);
@@ -721,12 +916,11 @@ function loadData(){
         document.getElementById('loading').style.display='none';
         document.getElementById('audio-unlock').classList.add('show');
         setMsg(`✅ AI 분석 데이터 로드 완료 — ${matchEvents.length}개 이벤트 (speech-ready)`);
-      })
     }).catch(err=>{
-        ballTrack=null;
-        setMsg(`❌ AI 데이터 로드 실패: ${err.message}`);
-        console.error(err);
-      });
+      ballTrack=null;
+      setMsg(`❌ AI 데이터 로드 실패: ${err.message}`);
+      console.error(err);
+    });
     return; // async — rest handled in .then()
   }
 
